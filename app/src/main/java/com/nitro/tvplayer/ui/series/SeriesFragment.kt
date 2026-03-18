@@ -8,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -20,6 +21,7 @@ import com.nitro.tvplayer.ui.livetv.CategoryAdapter
 import com.nitro.tvplayer.ui.player.PlayerActivity
 import com.nitro.tvplayer.utils.FavouriteItem
 import com.nitro.tvplayer.utils.FavouritesManager
+import com.nitro.tvplayer.utils.PlaybackPositionManager
 import com.nitro.tvplayer.utils.loadUrl
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
@@ -30,10 +32,10 @@ class SeriesFragment : Fragment() {
 
     private val viewModel: SeriesViewModel by activityViewModels()
     @Inject lateinit var favouritesManager: FavouritesManager
+    @Inject lateinit var positionManager: PlaybackPositionManager
 
     private var _binding: FragmentSeriesBinding? = null
     private val binding get() = _binding!!
-
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var seriesAdapter: SeriesAdapter
     private lateinit var episodeAdapter: EpisodeAdapter
@@ -57,11 +59,8 @@ class SeriesFragment : Fragment() {
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
         if (!hidden) {
-            // Refresh Continue Watching when returning to Series tab
             val cat = viewModel.selectedCategory.value
-            if (cat?.categoryId == SERIES_CAT_CONTINUE) {
-                viewModel.filterByCategory(cat)
-            }
+            if (cat?.categoryId == SERIES_CAT_CONTINUE) viewModel.filterByCategory(cat)
         }
     }
 
@@ -105,6 +104,7 @@ class SeriesFragment : Fragment() {
             val seriesName = viewModel.selectedSeries.value?.name ?: ""
             val cover      = viewModel.selectedSeries.value?.cover ?: ""
             val season     = viewModel.selectedSeason.value
+            val contentId  = "series_${seriesId}_ep_${episode.id}"
 
             val urls = ArrayList(episodes.map {
                 viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv")
@@ -112,18 +112,32 @@ class SeriesFragment : Fragment() {
             val episodeTitles = ArrayList(episodes.mapIndexed { i, ep ->
                 "$seriesName S${season}E${ep.episodeNum ?: (i + 1)} - ${ep.title ?: ""}"
             })
-            // Unique content ID per episode for resume tracking
-            val ids = ArrayList(episodes.map { "series_${seriesId}_ep_${it.id}" })
+            val ids       = ArrayList(episodes.map { "series_${seriesId}_ep_${it.id}" })
             val iconsList = ArrayList(episodes.map { cover })
 
-            startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
-                putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
-                putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, episodeTitles)
-                putStringArrayListExtra(PlayerActivity.EXTRA_IDS, ids)
-                putStringArrayListExtra(PlayerActivity.EXTRA_ICONS, iconsList)
-                putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
-                putExtra(PlayerActivity.EXTRA_TYPE, "series")
-            })
+            // Check if episode has saved position → show Resume Dialog
+            val savedPos = positionManager.getSavedPosition(contentId)
+            if (savedPos > 0L) {
+                val epTitle  = "$seriesName S${season}E${episode.episodeNum ?: ""}"
+                val duration = positionManager.getWatchedList()
+                    .find { it.contentId == contentId }?.durationMs ?: 0L
+                showResumeDialog(
+                    title    = epTitle,
+                    savedPos = savedPos,
+                    duration = duration,
+                    onResume = {
+                        launchPlayer(urls, episodeTitles, ids, iconsList,
+                            index.coerceAtLeast(0))
+                    },
+                    onRestart = {
+                        positionManager.clearPosition(contentId)
+                        launchPlayer(urls, episodeTitles, ids, iconsList,
+                            index.coerceAtLeast(0))
+                    }
+                )
+            } else {
+                launchPlayer(urls, episodeTitles, ids, iconsList, index.coerceAtLeast(0))
+            }
         }
         binding.rvEpisodes.apply {
             layoutManager = LinearLayoutManager(requireContext())
@@ -131,10 +145,43 @@ class SeriesFragment : Fragment() {
         }
     }
 
+    private fun showResumeDialog(
+        title: String, savedPos: Long, duration: Long,
+        onResume: () -> Unit, onRestart: () -> Unit
+    ) {
+        val timeStr  = formatTime(savedPos)
+        val totalStr = if (duration > 0) " / ${formatTime(duration)}" else ""
+        AlertDialog.Builder(requireContext())
+            .setTitle("Resume \"$title\"?")
+            .setMessage("You were at $timeStr$totalStr\n\nContinue from where you left off?")
+            .setPositiveButton("▶ Resume") { _, _ -> onResume() }
+            .setNegativeButton("↺ Start Over") { _, _ -> onRestart() }
+            .setCancelable(true)
+            .show()
+    }
+
+    private fun launchPlayer(
+        urls: ArrayList<String>, titles: ArrayList<String>,
+        ids: ArrayList<String>, icons: ArrayList<String>, startIndex: Int
+    ) {
+        startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
+            putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
+            putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,   titles)
+            putStringArrayListExtra(PlayerActivity.EXTRA_IDS,      ids)
+            putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,    icons)
+            putExtra(PlayerActivity.EXTRA_START_INDEX, startIndex)
+            putExtra(PlayerActivity.EXTRA_TYPE, "series")
+        })
+    }
+
+    private fun formatTime(ms: Long): String {
+        val s = ms / 1000; val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+    }
+
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-
                 launch {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
@@ -148,28 +195,9 @@ class SeriesFragment : Fragment() {
                         if (firstReal >= 0) categoryAdapter.setSelected(firstReal)
                     }
                 }
-
-                launch {
-                    viewModel.seriesList.collect { list ->
-                        _binding ?: return@collect
-                        seriesAdapter.submitList(list)
-                    }
-                }
-
-                launch {
-                    viewModel.seasons.collect { list ->
-                        _binding ?: return@collect
-                        seasonAdapter.submitList(list)
-                    }
-                }
-
-                launch {
-                    viewModel.episodes.collect { list ->
-                        _binding ?: return@collect
-                        episodeAdapter.submitList(list)
-                    }
-                }
-
+                launch { viewModel.seriesList.collect { list -> _binding?.let { seriesAdapter.submitList(list) } } }
+                launch { viewModel.seasons.collect   { list -> _binding?.let { seasonAdapter.submitList(list) } } }
+                launch { viewModel.episodes.collect  { list -> _binding?.let { episodeAdapter.submitList(list) } } }
                 launch {
                     viewModel.selectedSeries.collect { series ->
                         series ?: return@collect
@@ -181,11 +209,9 @@ class SeriesFragment : Fragment() {
                         binding.ivSeriesCover.loadUrl(series.cover)
                     }
                 }
-
                 launch {
                     viewModel.loading.collect { loading ->
-                        _binding?.progressBar?.visibility =
-                            if (loading) View.VISIBLE else View.GONE
+                        _binding?.progressBar?.visibility = if (loading) View.VISIBLE else View.GONE
                     }
                 }
             }
