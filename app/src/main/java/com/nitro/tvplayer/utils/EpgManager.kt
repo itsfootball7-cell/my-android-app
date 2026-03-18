@@ -14,28 +14,37 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 data class EpgInfo(
-    val currentShow: String,
-    val nextShow: String,
+    val currentShow:     String,
+    val nextShow:        String,
     val progressPercent: Int,
-    val startTime: String,
-    val endTime: String
+    val startTime:       String,
+    val endTime:         String
 )
 
 @Singleton
 class EpgManager @Inject constructor(
     private val repo: ContentRepository
 ) {
+    // In-memory cache: streamId → EpgInfo
     private val cache = mutableMapOf<Int, EpgInfo>()
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    fun getEpgCached(streamId: Int): EpgInfo? = cache[streamId]
+    // ── Called by PlayerActivity to get cached EPG instantly ──
+    fun getEpg(streamId: Int): EpgInfo? = cache[streamId]
 
+    // ── Called to fetch EPG from API if not cached ──
     fun fetchEpg(streamId: Int, onResult: (EpgInfo?) -> Unit) {
+        // Return from cache immediately if available
         cache[streamId]?.let { onResult(it); return }
+
         scope.launch {
             try {
                 repo.getEpg(streamId.toString()).onSuccess { response ->
-                    val info = parseEpg(response.epgListings ?: emptyList())
+                    val listings = response.epgListings ?: run {
+                        withContext(Dispatchers.Main) { onResult(null) }
+                        return@onSuccess
+                    }
+                    val info = parseEpg(listings)
                     if (info != null) cache[streamId] = info
                     withContext(Dispatchers.Main) { onResult(info) }
                 }.onFailure {
@@ -49,7 +58,7 @@ class EpgManager @Inject constructor(
 
     private fun parseEpg(listings: List<EpgListing>): EpgInfo? {
         if (listings.isEmpty()) return null
-        val now     = System.currentTimeMillis() / 1000L
+        val now     = System.currentTimeMillis() / 1000
         val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
         var current: EpgListing? = null
@@ -65,28 +74,31 @@ class EpgManager @Inject constructor(
                 break
             }
         }
+
         current ?: return null
 
         val startTs  = current.startTimestamp?.toLongOrNull() ?: 0L
         val stopTs   = current.stopTimestamp?.toLongOrNull()  ?: 0L
-        val duration = (stopTs - startTs).coerceAtLeast(1L)
-        val elapsed  = (now - startTs).coerceAtLeast(0L)
+        val duration = (stopTs - startTs).coerceAtLeast(1)
+        val elapsed  = (now - startTs).coerceAtLeast(0)
         val progress = ((elapsed * 100f) / duration).toInt().coerceIn(0, 100)
 
         return EpgInfo(
             currentShow     = decodeTitle(current.title),
-            nextShow        = next?.let { decodeTitle(it.title) } ?: "",
+            nextShow        = next?.let { "Next: ${decodeTitle(it.title)}" } ?: "",
             progressPercent = progress,
-            startTime       = timeFmt.format(Date(startTs * 1000L)),
-            endTime         = timeFmt.format(Date(stopTs  * 1000L))
+            startTime       = timeFmt.format(Date(startTs * 1000)),
+            endTime         = timeFmt.format(Date(stopTs  * 1000))
         )
     }
 
     private fun decodeTitle(title: String?): String {
-        if (title.isNullOrBlank()) return "No Info"
+        if (title.isNullOrBlank()) return "No info"
         return try {
             String(Base64.decode(title, Base64.DEFAULT), Charsets.UTF_8).trim()
-        } catch (e: Exception) { title }
+        } catch (e: Exception) {
+            title
+        }
     }
 
     fun clearCache() = cache.clear()
