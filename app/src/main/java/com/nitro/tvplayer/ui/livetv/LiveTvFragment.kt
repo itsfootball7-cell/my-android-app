@@ -13,9 +13,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.nitro.tvplayer.databinding.FragmentLiveTvBinding
 import com.nitro.tvplayer.ui.player.PlayerActivity
-import com.nitro.tvplayer.utils.gone
 import com.nitro.tvplayer.utils.loadUrl
 import com.nitro.tvplayer.utils.visible
+import com.nitro.tvplayer.utils.gone
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
@@ -28,7 +28,10 @@ class LiveTvFragment : Fragment() {
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var streamAdapter: LiveStreamAdapter
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
         _binding = FragmentLiveTvBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -58,16 +61,22 @@ class LiveTvFragment : Fragment() {
         }
 
         binding.btnPlay.setOnClickListener {
-            viewModel.selectedStream.value?.let { stream ->
-                val url = viewModel.buildStreamUrl(stream.streamId)
-                startActivity(
-                    Intent(requireContext(), PlayerActivity::class.java).apply {
-                        putExtra(PlayerActivity.EXTRA_URL, url)
-                        putExtra(PlayerActivity.EXTRA_TITLE, stream.name)
-                        putExtra(PlayerActivity.EXTRA_TYPE, "live")
-                    }
-                )
-            }
+            val streams = viewModel.streams.value
+            val selected = viewModel.selectedStream.value ?: return@setOnClickListener
+            val selectedIndex = streams.indexOfFirst { it.streamId == selected.streamId }
+
+            // Build full playlist so Prev/Next works
+            val urls = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
+            val titles = ArrayList(streams.map { it.name })
+
+            startActivity(
+                Intent(requireContext(), PlayerActivity::class.java).apply {
+                    putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
+                    putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, titles)
+                    putExtra(PlayerActivity.EXTRA_START_INDEX, selectedIndex.coerceAtLeast(0))
+                    putExtra(PlayerActivity.EXTRA_TYPE, "live")
+                }
+            )
         }
     }
 
