@@ -6,7 +6,6 @@
     android:orientation="vertical"
     android:background="@color/bg_primary">
 
-    <!-- Top Navigation Bar -->
     <LinearLayout
         android:id="@+id/topNav"
         android:layout_width="match_parent"
@@ -17,7 +16,6 @@
         android:paddingEnd="16dp"
         android:gravity="center_vertical">
 
-        <!-- Logo -->
         <ImageView
             android:layout_width="28dp"
             android:layout_height="28dp"
@@ -43,7 +41,6 @@
 
         <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
 
-        <!-- Live TV tab -->
         <TextView
             android:id="@+id/tabLive"
             android:layout_width="wrap_content"
@@ -52,11 +49,10 @@
             android:textColor="#80FFFFFF"
             android:textSize="12sp"
             android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:background="@drawable/tab_selector"/>
 
-        <!-- Movies tab -->
         <TextView
             android:id="@+id/tabMovies"
             android:layout_width="wrap_content"
@@ -65,11 +61,10 @@
             android:textColor="#80FFFFFF"
             android:textSize="12sp"
             android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:background="@drawable/tab_selector"/>
 
-        <!-- Series tab -->
         <TextView
             android:id="@+id/tabSeries"
             android:layout_width="wrap_content"
@@ -78,24 +73,10 @@
             android:textColor="#80FFFFFF"
             android:textSize="12sp"
             android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:background="@drawable/tab_selector"/>
 
-        <!-- ⭐ Favourites tab — NEW -->
-        <TextView
-            android:id="@+id/tabFavourites"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="⭐  Favourites"
-            android:textColor="#80FFFFFF"
-            android:textSize="12sp"
-            android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:background="@drawable/tab_selector"/>
-
-        <!-- Settings tab -->
         <TextView
             android:id="@+id/tabSettings"
             android:layout_width="wrap_content"
@@ -104,13 +85,12 @@
             android:textColor="#80FFFFFF"
             android:textSize="12sp"
             android:gravity="center"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
             android:background="@drawable/tab_selector"/>
 
         <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
 
-        <!-- User info -->
         <TextView
             android:id="@+id/tvUsername"
             android:layout_width="wrap_content"
@@ -128,7 +108,6 @@
 
     </LinearLayout>
 
-    <!-- Fragment Container -->
     <FrameLayout
         android:id="@+id/fragmentContainer"
         android:layout_width="match_parent"
