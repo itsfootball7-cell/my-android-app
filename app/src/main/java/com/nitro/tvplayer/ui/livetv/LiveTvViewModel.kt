@@ -5,29 +5,34 @@ import androidx.lifecycle.viewModelScope
 import com.nitro.tvplayer.data.model.Category
 import com.nitro.tvplayer.data.model.LiveStream
 import com.nitro.tvplayer.data.repository.ContentRepository
+import com.nitro.tvplayer.utils.FavouritesManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+// Special virtual category IDs
+const val CAT_ALL       = "__ALL__"
+const val CAT_FAVOURITES = "__FAVOURITES__"
+
 @HiltViewModel
 class LiveTvViewModel @Inject constructor(
-    private val repo: ContentRepository
+    private val repo: ContentRepository,
+    private val favouritesManager: FavouritesManager
 ) : ViewModel() {
 
-    val categories     = MutableStateFlow<List<Category>>(emptyList())
-    val streams        = MutableStateFlow<List<LiveStream>>(emptyList())
-    val selectedStream = MutableStateFlow<LiveStream?>(null)
+    val categories       = MutableStateFlow<List<Category>>(emptyList())
+    val streams          = MutableStateFlow<List<LiveStream>>(emptyList())
+    val selectedStream   = MutableStateFlow<LiveStream?>(null)
     val selectedCategory = MutableStateFlow<Category?>(null)
-    val loading        = MutableStateFlow(false)
-    val error          = MutableStateFlow<String?>(null)
+    val loading          = MutableStateFlow(false)
+    val error            = MutableStateFlow<String?>(null)
+    val previewActive    = MutableStateFlow(false)
 
-    // Whether preview mini-player is active
-    val previewActive  = MutableStateFlow(false)
-
-    private val allStreams = MutableStateFlow<List<LiveStream>>(emptyList())
-    private var dataLoaded = false
+    private val allStreams  = MutableStateFlow<List<LiveStream>>(emptyList())
+    private var dataLoaded  = false
 
     init { loadAll() }
 
@@ -42,30 +47,25 @@ class LiveTvViewModel @Inject constructor(
 
                 val cats = catsDeferred.await()
                 cats.onSuccess { catList ->
-                    // ── Auto-select FIRST real category (not "All Channels") ──
+                    // Build special categories at top
+                    val special = listOf(
+                        Category(CAT_ALL,        "All",        0),
+                        Category(CAT_FAVOURITES, "Favourites", 0)
+                    )
+                    categories.value = special + catList
+                    // Auto-select first real category (index 2 after special)
                     val firstReal = catList.firstOrNull()
-                    categories.value = catList
-                    if (firstReal != null) {
-                        selectedCategory.value = firstReal
-                    }
+                    if (firstReal != null) selectedCategory.value = firstReal
                 }
 
                 streamsDeferred.await().onSuccess { list ->
                     allStreams.value = list
-
-                    // ── Show streams for first category automatically ──
+                    // Show first real category
                     val firstCatId = selectedCategory.value?.categoryId
                     streams.value = if (firstCatId != null) {
                         list.filter { it.categoryId == firstCatId }
-                    } else {
-                        list
-                    }
-
-                    // Auto-select first stream
-                    if (streams.value.isNotEmpty()) {
-                        selectedStream.value = streams.value.first()
-                        previewActive.value  = false // wait for user to tap
-                    }
+                    } else list
+                    if (streams.value.isNotEmpty()) selectedStream.value = streams.value.first()
                     dataLoaded = true
                 }.onFailure { e ->
                     error.value = e.message ?: "Failed to load channels"
@@ -80,9 +80,20 @@ class LiveTvViewModel @Inject constructor(
 
     fun filterByCategory(category: Category) {
         selectedCategory.value = category
-        val filtered = allStreams.value.filter { it.categoryId == category.categoryId }
+        val filtered = when (category.categoryId) {
+            CAT_ALL -> allStreams.value
+
+            CAT_FAVOURITES -> {
+                val favIds = favouritesManager.getByType("live").map { fav ->
+                    // Extract stream ID from fav ID like "live_123"
+                    fav.id.removePrefix("live_").toIntOrNull()
+                }
+                allStreams.value.filter { it.streamId in favIds }
+            }
+
+            else -> allStreams.value.filter { it.categoryId == category.categoryId }
+        }
         streams.value = filtered
-        // Auto-select first stream in new category
         if (filtered.isNotEmpty()) {
             selectedStream.value = filtered.first()
             previewActive.value  = false
@@ -91,20 +102,19 @@ class LiveTvViewModel @Inject constructor(
 
     fun selectStream(stream: LiveStream) {
         selectedStream.value = stream
-        previewActive.value  = true  // start playing in preview box
+        previewActive.value  = true
     }
 
     fun search(query: String) {
-        streams.value = if (query.isEmpty()) {
-            val catId = selectedCategory.value?.categoryId
-            if (catId != null) allStreams.value.filter { it.categoryId == catId }
-            else allStreams.value
-        } else {
-            allStreams.value.filter { it.name.contains(query, ignoreCase = true) }
+        if (query.isEmpty()) {
+            filterByCategory(selectedCategory.value ?: return)
+            return
+        }
+        streams.value = allStreams.value.filter {
+            it.name.contains(query, ignoreCase = true)
         }
     }
 
     fun buildStreamUrl(streamId: Int) = repo.buildLiveUrl(streamId)
-
     fun getAllStreams() = allStreams.value
 }
