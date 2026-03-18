@@ -59,7 +59,6 @@ class LiveTvFragment : Fragment() {
         setupSearch()
     }
 
-    // ─── Attach shared player to mini preview ─────────────────
     private fun attachPreviewPlayer() {
         if (playerHolder.player == null) {
             playerHolder.player = ExoPlayer.Builder(requireContext()).build()
@@ -67,6 +66,7 @@ class LiveTvFragment : Fragment() {
         binding.previewPlayerView.player = playerHolder.player
         binding.previewPlayerView.useController = false
 
+        // Returning from fullscreen — stream still playing, just show it
         if (playerHolder.isInFullscreen) {
             playerHolder.isInFullscreen = false
             if (playerHolder.currentUrl != null) showPreviewPlaying()
@@ -80,19 +80,18 @@ class LiveTvFragment : Fragment() {
             val index   = streams.indexOfFirst { it.streamId == stream.streamId }
             val urls    = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
             val names   = ArrayList(streams.map { it.name })
-            // Stream IDs as integers for EPG lookup
             val sIds    = ArrayList(streams.map { it.streamId })
 
-            playerHolder.isInFullscreen  = true
+            playerHolder.isInFullscreen = true
+
+            // ── Detach view → black box, stream keeps running in PlayerActivity
             binding.previewPlayerView.player = null
 
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
                     putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
                     putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
-                    // Use string literal to avoid unresolved reference if PlayerActivity
-                    // hasn't been compiled yet in the same build pass
-                    putIntegerArrayListExtra("extra_stream_ids", sIds)
+                    putIntegerArrayListExtra(PlayerActivity.EXTRA_STREAM_IDS, sIds)
                     putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
                     putExtra(PlayerActivity.EXTRA_TYPE, "live")
                     putExtra(PlayerActivity.EXTRA_USE_EXISTING, true)
@@ -112,6 +111,7 @@ class LiveTvFragment : Fragment() {
             if (binding.previewPlayerView.player == null) {
                 binding.previewPlayerView.player = holder.player
             }
+            holder.player?.play()
             showPreviewPlaying()
             return
         }
@@ -132,11 +132,8 @@ class LiveTvFragment : Fragment() {
         b.tapHint.gone()
     }
 
-    // ─── Adapters ─────────────────────────────────────────────
     private fun setupAdapters() {
-        categoryAdapter = CategoryAdapter { category ->
-            viewModel.filterByCategory(category)
-        }
+        categoryAdapter = CategoryAdapter { viewModel.filterByCategory(it) }
         binding.rvCategories.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = categoryAdapter
@@ -149,19 +146,16 @@ class LiveTvFragment : Fragment() {
             },
             onLongPress = { stream ->
                 val favItem = FavouriteItem(
-                    id         = "live_${stream.streamId}",
-                    name       = stream.name,
-                    icon       = stream.streamIcon,
-                    type       = "live",
-                    streamUrl  = viewModel.buildStreamUrl(stream.streamId),
+                    id = "live_${stream.streamId}", name = stream.name,
+                    icon = stream.streamIcon, type = "live",
+                    streamUrl = viewModel.buildStreamUrl(stream.streamId),
                     categoryId = stream.categoryId
                 )
                 val added = favouritesManager.toggle(favItem)
-                val msg = if (added)
-                    "⭐ \"${stream.name}\" added to Favourites"
-                else
-                    "\"${stream.name}\" removed from Favourites"
-                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(),
+                    if (added) "⭐ \"${stream.name}\" added to Favourites"
+                    else "\"${stream.name}\" removed from Favourites",
+                    Toast.LENGTH_SHORT).show()
             }
         )
         binding.rvStreams.apply {
@@ -170,28 +164,23 @@ class LiveTvFragment : Fragment() {
         }
     }
 
-    // ─── Observe ──────────────────────────────────────────────
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-
                 launch {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
-                        // Auto-select first real category (index 2 = after All + Favourites)
                         if (cats.size > 2) categoryAdapter.setSelected(2)
                         else if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
                     }
                 }
-
                 launch {
                     viewModel.streams.collect { streams ->
                         _binding ?: return@collect
                         streamAdapter.submitList(streams)
                     }
                 }
-
                 launch {
                     viewModel.selectedStream.collect { stream ->
                         stream ?: return@collect
@@ -201,27 +190,23 @@ class LiveTvFragment : Fragment() {
                         b.tvLiveBadge.visible()
                     }
                 }
-
                 launch {
                     viewModel.loading.collect { loading ->
                         _binding?.progressBar?.visibility =
                             if (loading) View.VISIBLE else View.GONE
                     }
                 }
-
                 launch {
                     viewModel.error.collect { err ->
                         err ?: return@collect
                         val b = _binding ?: return@collect
-                        b.tvError.text = err
-                        b.tvError.visible()
+                        b.tvError.text = err; b.tvError.visible()
                     }
                 }
             }
         }
     }
 
-    // ─── Search ───────────────────────────────────────────────
     private fun setupSearch() {
         binding.etSearch.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { viewModel.search(s.toString()) }
@@ -230,18 +215,41 @@ class LiveTvFragment : Fragment() {
         })
     }
 
-    // ─── Lifecycle ────────────────────────────────────────────
+    // ── Tab becomes visible → re-attach player and resume ──
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (hidden) {
+            // Switched to Movies/Series → PAUSE
+            if (!playerHolder.isInFullscreen) {
+                playerHolder.player?.pause()
+            }
+        } else {
+            // Switched BACK to Live TV → RESUME
+            if (binding.previewPlayerView.player == null && playerHolder.currentUrl != null) {
+                binding.previewPlayerView.player = playerHolder.player
+            }
+            if (playerHolder.currentUrl != null) {
+                playerHolder.player?.play()
+                showPreviewPlaying()
+            }
+        }
+    }
+
     override fun onResume() {
         super.onResume()
-        if (binding.previewPlayerView.player == null) {
+        if (binding.previewPlayerView.player == null && playerHolder.currentUrl != null) {
             binding.previewPlayerView.player = playerHolder.player
         }
-        playerHolder.player?.play()
+        if (!playerHolder.isInFullscreen && playerHolder.currentUrl != null) {
+            playerHolder.player?.play()
+        }
     }
 
     override fun onPause() {
         super.onPause()
-        if (!playerHolder.isInFullscreen) playerHolder.player?.pause()
+        if (!playerHolder.isInFullscreen) {
+            playerHolder.player?.pause()
+        }
     }
 
     override fun onDestroyView() {
