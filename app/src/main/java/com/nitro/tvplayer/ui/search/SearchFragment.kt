@@ -2,6 +2,8 @@ package com.nitro.tvplayer.ui.search
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.LayoutInflater
@@ -16,29 +18,26 @@ import com.nitro.tvplayer.ui.movies.MoviesViewModel
 import com.nitro.tvplayer.ui.player.PlayerActivity
 import com.nitro.tvplayer.ui.series.SeriesViewModel
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class SearchFragment : Fragment() {
 
     private val liveTvViewModel: LiveTvViewModel by activityViewModels()
-    private val moviesViewModel: MoviesViewModel  by activityViewModels()
-    private val seriesViewModel: SeriesViewModel  by activityViewModels()
+    private val moviesViewModel: MoviesViewModel by activityViewModels()
+    private val seriesViewModel: SeriesViewModel by activityViewModels()
 
     private var _binding: FragmentSearchBinding? = null
     private val binding get() = _binding!!
 
     private lateinit var resultsAdapter: SearchResultsAdapter
-    private var searchJob: Job? = null
-    private val scope = MainScope()
+    private val handler = Handler(Looper.getMainLooper())
+    private var searchRunnable: Runnable? = null
 
     var onSeriesSelected: ((Int) -> Unit)? = null
 
     override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
+        inflater: LayoutInflater,
+        container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View {
         _binding = FragmentSearchBinding.inflate(inflater, container, false)
@@ -56,51 +55,52 @@ class SearchFragment : Fragment() {
         super.onHiddenChanged(hidden)
         if (!hidden) {
             binding.etSearch.requestFocus()
-            showEmptyState()
         } else {
             binding.etSearch.setText("")
+            showEmptyState()
         }
     }
 
     private fun setupAdapter() {
         resultsAdapter = SearchResultsAdapter { result ->
-            when (result.type) {
-                "live" -> {
-                    val streams   = liveTvViewModel.getAllStreams()
-                    val index     = streams.indexOfFirst { it.streamId == result.id }
-                    val urls      = ArrayList(streams.map { liveTvViewModel.buildStreamUrl(it.streamId) })
-                    val names     = ArrayList(streams.map { it.name })
-                    val sIds      = ArrayList(streams.map { it.streamId })
-                    val iconsList = ArrayList(streams.map { it.streamIcon ?: "" })
-                    startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
-                        putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
-                        putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
-                        putIntegerArrayListExtra(PlayerActivity.EXTRA_STREAM_IDS, sIds)
-                        putStringArrayListExtra(PlayerActivity.EXTRA_ICONS, iconsList)
-                        putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
-                        putExtra(PlayerActivity.EXTRA_TYPE, "live")
-                    })
-                }
-                "movie" -> {
-                    startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
-                        putExtra(PlayerActivity.EXTRA_URL,   result.streamUrl)
-                        putExtra(PlayerActivity.EXTRA_TITLE, result.name)
-                        putExtra(PlayerActivity.EXTRA_TYPE,  "movie")
-                        putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
-                            arrayListOf("movie_${result.id}"))
-                        putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,
-                            arrayListOf(result.icon ?: ""))
-                    })
-                }
-                "series" -> {
-                    onSeriesSelected?.invoke(result.id)
-                }
-            }
+            handleResultClick(result)
         }
+        binding.rvResults.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvResults.adapter = resultsAdapter
+    }
 
-        binding.rvResults.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = resultsAdapter
+    private fun handleResultClick(result: SearchResult) {
+        when (result.type) {
+            "live" -> {
+                val streams   = liveTvViewModel.getAllStreams()
+                val index     = streams.indexOfFirst { it.streamId == result.id }
+                val urls      = ArrayList(streams.map { liveTvViewModel.buildStreamUrl(it.streamId) })
+                val names     = ArrayList(streams.map { it.name })
+                val sIds      = ArrayList(streams.map { it.streamId })
+                val iconsList = ArrayList(streams.map { it.streamIcon ?: "" })
+                val intent    = Intent(requireContext(), PlayerActivity::class.java)
+                intent.putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
+                intent.putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
+                intent.putIntegerArrayListExtra(PlayerActivity.EXTRA_STREAM_IDS, sIds)
+                intent.putStringArrayListExtra(PlayerActivity.EXTRA_ICONS, iconsList)
+                intent.putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
+                intent.putExtra(PlayerActivity.EXTRA_TYPE, "live")
+                startActivity(intent)
+            }
+            "movie" -> {
+                val intent = Intent(requireContext(), PlayerActivity::class.java)
+                intent.putExtra(PlayerActivity.EXTRA_URL, result.streamUrl)
+                intent.putExtra(PlayerActivity.EXTRA_TITLE, result.name)
+                intent.putExtra(PlayerActivity.EXTRA_TYPE, "movie")
+                intent.putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
+                    arrayListOf("movie_${result.id}"))
+                intent.putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,
+                    arrayListOf(result.icon ?: ""))
+                startActivity(intent)
+            }
+            "series" -> {
+                onSeriesSelected?.invoke(result.id)
+            }
         }
     }
 
@@ -110,15 +110,16 @@ class SearchFragment : Fragment() {
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
                 val query = s?.toString()?.trim() ?: ""
-                searchJob?.cancel()
+                searchRunnable?.let { handler.removeCallbacks(it) }
                 if (query.length < 2) {
                     if (query.isEmpty()) showEmptyState()
                     return
                 }
-                searchJob = scope.launch {
-                    delay(300)
-                    if (isAdded) performSearch(query)
+                val runnable = Runnable {
+                    if (isAdded && _binding != null) performSearch(query)
                 }
+                searchRunnable = runnable
+                handler.postDelayed(runnable, 300)
             }
         })
 
@@ -133,30 +134,31 @@ class SearchFragment : Fragment() {
         b.progressBar.visibility = View.VISIBLE
         b.rvResults.visibility   = View.GONE
         b.emptyState.visibility  = View.GONE
+        b.tvResultCount.visibility = View.GONE
 
         val results = mutableListOf<SearchResult>()
 
-        // Live TV
-        liveTvViewModel.getAllStreams()
-            .filter { it.name.contains(query, ignoreCase = true) }
-            .take(20)
-            .mapTo(results) { stream ->
-                SearchResult(
+        // Search Live TV channels
+        val liveStreams = liveTvViewModel.getAllStreams()
+        for (stream in liveStreams) {
+            if (stream.name.contains(query, ignoreCase = true)) {
+                results.add(SearchResult(
                     id        = stream.streamId,
                     name      = stream.name,
                     icon      = stream.streamIcon,
                     type      = "live",
                     typeLabel = "Live TV",
                     streamUrl = liveTvViewModel.buildStreamUrl(stream.streamId)
-                )
+                ))
+                if (results.count { it.type == "live" } >= 20) break
             }
+        }
 
-        // Movies
-        moviesViewModel.getAllMovies()
-            .filter { it.name.contains(query, ignoreCase = true) }
-            .take(20)
-            .mapTo(results) { movie ->
-                SearchResult(
+        // Search Movies
+        val allMovies = moviesViewModel.getAllMovies()
+        for (movie in allMovies) {
+            if (movie.name.contains(query, ignoreCase = true)) {
+                results.add(SearchResult(
                     id        = movie.streamId,
                     name      = movie.name,
                     icon      = movie.streamIcon,
@@ -165,15 +167,16 @@ class SearchFragment : Fragment() {
                     streamUrl = moviesViewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4"),
                     year      = movie.releaseDate,
                     rating    = movie.rating5 ?: movie.rating
-                )
+                ))
+                if (results.count { it.type == "movie" } >= 20) break
             }
+        }
 
-        // Series
-        seriesViewModel.getAllSeries()
-            .filter { it.name.contains(query, ignoreCase = true) }
-            .take(20)
-            .mapTo(results) { series ->
-                SearchResult(
+        // Search Series
+        val allSeries = seriesViewModel.getAllSeries()
+        for (series in allSeries) {
+            if (series.name.contains(query, ignoreCase = true)) {
+                results.add(SearchResult(
                     id        = series.seriesId,
                     name      = series.name,
                     icon      = series.cover,
@@ -182,18 +185,20 @@ class SearchFragment : Fragment() {
                     streamUrl = "",
                     year      = series.releaseDate,
                     rating    = series.rating5 ?: series.rating
-                )
+                ))
+                if (results.count { it.type == "series" } >= 20) break
             }
+        }
 
         val b2 = _binding ?: return
         b2.progressBar.visibility = View.GONE
 
         if (results.isEmpty()) {
-            b2.tvNoResults.text    = "No results for \"$query\""
+            b2.tvNoResults.text      = "No results for \"$query\""
             b2.emptyState.visibility = View.VISIBLE
             b2.rvResults.visibility  = View.GONE
         } else {
-            b2.tvResultCount.text    = "${results.size} results for \"$query\""
+            b2.tvResultCount.text       = "${results.size} results for \"$query\""
             b2.tvResultCount.visibility = View.VISIBLE
             resultsAdapter.submitList(results)
             b2.rvResults.visibility  = View.VISIBLE
@@ -203,17 +208,17 @@ class SearchFragment : Fragment() {
 
     private fun showEmptyState() {
         val b = _binding ?: return
-        b.progressBar.visibility    = View.GONE
-        b.rvResults.visibility      = View.GONE
-        b.tvResultCount.visibility  = View.GONE
-        b.emptyState.visibility     = View.VISIBLE
-        b.tvNoResults.text          = "Search across Live TV, Movies and Series"
-        resultsAdapter.submitList(emptyList())
+        b.progressBar.visibility   = View.GONE
+        b.rvResults.visibility     = View.GONE
+        b.tvResultCount.visibility = View.GONE
+        b.emptyState.visibility    = View.VISIBLE
+        b.tvNoResults.text         = "Search across Live TV, Movies and Series"
+        if (::resultsAdapter.isInitialized) resultsAdapter.submitList(emptyList())
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        searchJob?.cancel()
+        searchRunnable?.let { handler.removeCallbacks(it) }
         _binding = null
     }
 }
