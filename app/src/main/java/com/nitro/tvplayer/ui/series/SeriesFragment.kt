@@ -98,22 +98,22 @@ class SeriesFragment : Fragment() {
         }
 
         episodeAdapter = EpisodeAdapter { episode ->
-            val episodes   = viewModel.episodes.value
-            val index      = episodes.indexOfFirst { it.id == episode.id }
-            val seriesName = viewModel.selectedSeries.value?.name ?: ""
-            val season     = viewModel.selectedSeason.value
-            val seriesId   = viewModel.selectedSeries.value?.seriesId ?: 0
+            val episodes      = viewModel.episodes.value
+            val index         = episodes.indexOfFirst { it.id == episode.id }
+            val seriesName    = viewModel.selectedSeries.value?.name ?: ""
+            val seriesId      = viewModel.selectedSeries.value?.seriesId ?: 0
+            val season        = viewModel.selectedSeason.value
+            val seriesCover   = viewModel.selectedSeries.value?.cover ?: ""
 
             val urls = ArrayList(episodes.map {
                 viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv")
             })
             val episodeTitles = ArrayList(episodes.map {
-                "$seriesName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}"
+                "$seriesName S${season}E${it.episodeNum ?: (episodes.indexOf(it) + 1)} - ${it.title ?: ""}"
             })
+            // Use series_seriesId_ep_episodeId as content ID for per-episode resume
             val ids = ArrayList(episodes.map { "series_${seriesId}_ep_${it.id}" })
-            val iconsList = ArrayList(episodes.map {
-                viewModel.selectedSeries.value?.cover ?: ""
-            })
+            val iconsList = ArrayList(episodes.map { seriesCover })
 
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
