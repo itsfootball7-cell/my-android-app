@@ -62,14 +62,12 @@ class MoviesFragment : Fragment() {
             onClick = { viewModel.selectMovie(it) },
             onLongPress = { movie ->
                 val url = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
-                val added = favouritesManager.toggle(
-                    FavouriteItem(
-                        id = "movie_${movie.streamId}", name = movie.name,
-                        icon = movie.streamIcon, type = "movie",
-                        streamUrl = url, categoryId = movie.categoryId,
-                        extra = movie.extension
-                    )
-                )
+                val added = favouritesManager.toggle(FavouriteItem(
+                    id = "movie_${movie.streamId}", name = movie.name,
+                    icon = movie.streamIcon, type = "movie",
+                    streamUrl = url, categoryId = movie.categoryId,
+                    extra = movie.extension
+                ))
                 Toast.makeText(requireContext(),
                     if (added) "⭐ \"${movie.name}\" added to Favourites"
                     else "\"${movie.name}\" removed from Favourites",
@@ -90,6 +88,9 @@ class MoviesFragment : Fragment() {
                 putExtra(PlayerActivity.EXTRA_TYPE,  "movie")
                 putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
                     arrayListOf("movie_${movie.streamId}"))
+                // Pass icon so PlayerActivity can save it with position
+                putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,
+                    arrayListOf(movie.streamIcon ?: ""))
             })
         }
     }
@@ -101,7 +102,7 @@ class MoviesFragment : Fragment() {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
-                        // 4 special categories at top → first real = index 4
+                        // Highlight first real category (skip 4 special ones)
                         val firstRealIndex = cats.indexOfFirst { c ->
                             c.categoryId != MOVIE_CAT_ALL &&
                             c.categoryId != MOVIE_CAT_FAVOURITES &&
