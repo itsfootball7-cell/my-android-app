@@ -10,28 +10,36 @@ import com.nitro.tvplayer.databinding.ItemMovieBinding
 import com.nitro.tvplayer.utils.loadUrl
 
 class MoviesAdapter(
-    private val onClick: (VodStream) -> Unit
+    private val onClick: (VodStream) -> Unit,
+    private val onLongPress: ((VodStream) -> Unit)? = null
 ) : ListAdapter<VodStream, MoviesAdapter.VH>(DIFF) {
 
     private var selectedPos = 0
 
-    inner class VH(val binding: ItemMovieBinding) : RecyclerView.ViewHolder(binding.root)
+    inner class VH(val binding: ItemMovieBinding) :
+        RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemMovieBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
-        holder.binding.tvMovieName.text = item.name
+        holder.binding.tvMovieName.text   = item.name
         holder.binding.tvMovieRating.text = "★ ${item.rating5 ?: ""}"
         holder.binding.ivMoviePoster.loadUrl(item.streamIcon)
         holder.binding.root.isSelected = position == selectedPos
+
         holder.binding.root.setOnClickListener {
             val old = selectedPos
             selectedPos = holder.bindingAdapterPosition
             notifyItemChanged(old)
             notifyItemChanged(selectedPos)
             onClick(item)
+        }
+
+        holder.binding.root.setOnLongClickListener {
+            onLongPress?.invoke(item)
+            true
         }
     }
 
