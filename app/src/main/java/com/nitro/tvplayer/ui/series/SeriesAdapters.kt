@@ -14,28 +14,36 @@ import com.nitro.tvplayer.utils.loadUrl
 
 // ─── Series Grid Adapter ─────────────────────────────────
 class SeriesAdapter(
-    private val onClick: (SeriesItem) -> Unit
+    private val onClick: (SeriesItem) -> Unit,
+    private val onLongPress: ((SeriesItem) -> Unit)? = null
 ) : ListAdapter<SeriesItem, SeriesAdapter.VH>(DIFF) {
 
     private var selectedPos = 0
 
-    inner class VH(val binding: ItemMovieBinding) : RecyclerView.ViewHolder(binding.root)
+    inner class VH(val binding: ItemMovieBinding) :
+        RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemMovieBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
-        holder.binding.tvMovieName.text = item.name
+        holder.binding.tvMovieName.text   = item.name
         holder.binding.tvMovieRating.text = "★ ${item.rating5 ?: ""}"
         holder.binding.ivMoviePoster.loadUrl(item.cover)
         holder.binding.root.isSelected = position == selectedPos
+
         holder.binding.root.setOnClickListener {
             val old = selectedPos
             selectedPos = holder.bindingAdapterPosition
             notifyItemChanged(old)
             notifyItemChanged(selectedPos)
             onClick(item)
+        }
+
+        holder.binding.root.setOnLongClickListener {
+            onLongPress?.invoke(item)
+            true
         }
     }
 
@@ -54,21 +62,21 @@ class SeasonAdapter(
 
     private var selectedPos = 0
 
-    inner class VH(val binding: ItemSeasonBinding) : RecyclerView.ViewHolder(binding.root)
+    inner class VH(val binding: ItemSeasonBinding) :
+        RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemSeasonBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val item = getItem(position)
-        holder.binding.tvSeason.text = "S$item"
+        holder.binding.tvSeason.text   = "S${getItem(position)}"
         holder.binding.root.isSelected = position == selectedPos
         holder.binding.root.setOnClickListener {
             val old = selectedPos
             selectedPos = holder.bindingAdapterPosition
             notifyItemChanged(old)
             notifyItemChanged(selectedPos)
-            onClick(item)
+            onClick(getItem(position))
         }
     }
 
@@ -85,14 +93,16 @@ class EpisodeAdapter(
     private val onClick: (Episode) -> Unit
 ) : ListAdapter<Episode, EpisodeAdapter.VH>(DIFF) {
 
-    inner class VH(val binding: ItemEpisodeBinding) : RecyclerView.ViewHolder(binding.root)
+    inner class VH(val binding: ItemEpisodeBinding) :
+        RecyclerView.ViewHolder(binding.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemEpisodeBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
-        holder.binding.tvEpisodeTitle.text = "E${item.episodeNum ?: (position + 1)} — ${item.title ?: "Episode ${position + 1}"}"
+        holder.binding.tvEpisodeTitle.text =
+            "E${item.episodeNum ?: (position + 1)} — ${item.title ?: "Episode ${position + 1}"}"
         holder.binding.tvEpisodeDuration.text = item.info?.duration ?: ""
         holder.binding.root.setOnClickListener { onClick(item) }
     }
