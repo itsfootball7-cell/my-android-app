@@ -59,13 +59,13 @@ class SeriesViewModel @Inject constructor(
                         Category(SERIES_CAT_CONTINUE,       "Continue Watching", 0),
                         Category(SERIES_CAT_RECENTLY_ADDED, "Recently Added",    0)
                     )
-                    categories.value = special + catList
+                    categories.value       = special + catList
                     selectedCategory.value = catList.firstOrNull()
                 }
 
                 seriesDeferred.await().onSuccess { list ->
                     allSeries.value = list
-                    val firstCatId = selectedCategory.value?.categoryId
+                    val firstCatId  = selectedCategory.value?.categoryId
                     seriesList.value = if (firstCatId != null)
                         list.filter { it.categoryId == firstCatId }
                     else list
@@ -96,15 +96,13 @@ class SeriesViewModel @Inject constructor(
             }
 
             SERIES_CAT_CONTINUE -> {
-                val watched = positionManager.getWatchedByType("series")
-                val watchedSeriesIds = watched.mapNotNull { entry ->
-                    entry.contentId.removePrefix("series_").toIntOrNull()
-                }.toSet()
+                val watched  = positionManager.getWatchedByType("series")
                 val seriesMap = allSeries.value.associateBy { it.seriesId }
                 watched.mapNotNull { entry ->
-                    val id = entry.contentId.removePrefix("series_").toIntOrNull()
+                    val id = entry.contentId.removePrefix("series_")
+                        .substringBefore("_ep_").toIntOrNull()
                     if (id != null) seriesMap[id] else null
-                }
+                }.distinctBy { it.seriesId }
             }
 
             SERIES_CAT_RECENTLY_ADDED -> {
@@ -166,7 +164,9 @@ class SeriesViewModel @Inject constructor(
             filterByCategory(selectedCategory.value ?: return)
             return
         }
-        seriesList.value = allSeries.value.filter { it.name.contains(query, ignoreCase = true) }
+        seriesList.value = allSeries.value.filter {
+            it.name.contains(query, ignoreCase = true)
+        }
     }
 
     fun buildEpisodeUrl(episodeId: String, ext: String) =
