@@ -25,10 +25,8 @@ import kotlinx.coroutines.launch
 class MoviesFragment : Fragment() {
 
     private val viewModel: MoviesViewModel by activityViewModels()
-
     private var _binding: FragmentMoviesBinding? = null
     private val binding get() = _binding!!
-
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var moviesAdapter: MoviesAdapter
 
@@ -48,23 +46,22 @@ class MoviesFragment : Fragment() {
     }
 
     private fun setupAdapters() {
-        categoryAdapter = CategoryAdapter { viewModel.filterByCategory(it.categoryId) }
+        categoryAdapter = CategoryAdapter { category ->
+            viewModel.filterByCategory(category)
+        }
         binding.rvCategories.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = categoryAdapter
         }
-
         moviesAdapter = MoviesAdapter { viewModel.selectMovie(it) }
         binding.rvMovies.apply {
             layoutManager = GridLayoutManager(requireContext(), 3)
             adapter = moviesAdapter
         }
-
         binding.btnPlay.setOnClickListener {
-            val movie = viewModel.selectedMovie.value ?: return@setOnClickListener
-            val url   = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
+            val movie     = viewModel.selectedMovie.value ?: return@setOnClickListener
+            val url       = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
             val contentId = "movie_${movie.streamId}"
-
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
                     putExtra(PlayerActivity.EXTRA_URL,   url)
@@ -79,19 +76,18 @@ class MoviesFragment : Fragment() {
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-
                 launch {
                     viewModel.categories.collect { cats ->
-                        _binding?.let { categoryAdapter.submitList(cats) }
+                        _binding ?: return@collect
+                        categoryAdapter.submitList(cats)
+                        if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
                     }
                 }
-
                 launch {
-                    viewModel.movies.collect { movies ->
-                        _binding?.let { moviesAdapter.submitList(movies) }
+                    viewModel.movies.collect { list ->
+                        _binding?.let { moviesAdapter.submitList(list) }
                     }
                 }
-
                 launch {
                     viewModel.selectedMovie.collect { movie ->
                         movie ?: return@collect
@@ -104,7 +100,6 @@ class MoviesFragment : Fragment() {
                         }
                     }
                 }
-
                 launch {
                     viewModel.loading.collect { loading ->
                         _binding?.progressBar?.visibility =
@@ -123,8 +118,5 @@ class MoviesFragment : Fragment() {
         })
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
-    }
+    override fun onDestroyView() { super.onDestroyView(); _binding = null }
 }
