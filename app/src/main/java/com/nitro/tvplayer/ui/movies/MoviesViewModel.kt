@@ -13,10 +13,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-const val MOVIE_CAT_ALL              = "__ALL__"
-const val MOVIE_CAT_FAVOURITES       = "__FAVOURITES__"
-const val MOVIE_CAT_CONTINUE         = "__CONTINUE__"
-const val MOVIE_CAT_RECENTLY_ADDED   = "__RECENT__"
+const val MOVIE_CAT_ALL            = "__ALL__"
+const val MOVIE_CAT_FAVOURITES     = "__FAVOURITES__"
+const val MOVIE_CAT_CONTINUE       = "__CONTINUE__"
+const val MOVIE_CAT_RECENTLY_ADDED = "__RECENT__"
 
 @HiltViewModel
 class MoviesViewModel @Inject constructor(
@@ -47,7 +47,6 @@ class MoviesViewModel @Inject constructor(
                 val moviesDeferred = async { repo.getVodStreams() }
 
                 catsDeferred.await().onSuccess { catList ->
-                    // Build special categories exactly like in screenshot
                     val special = listOf(
                         Category(MOVIE_CAT_ALL,            "All",               0),
                         Category(MOVIE_CAT_FAVOURITES,     "Favourites",        0),
@@ -55,17 +54,17 @@ class MoviesViewModel @Inject constructor(
                         Category(MOVIE_CAT_RECENTLY_ADDED, "Recently Added",    0)
                     )
                     categories.value = special + catList
-                    // Auto-select first real category
+                    // ── Auto-select FIRST REAL category (skip the 4 special ones) ──
                     val firstReal = catList.firstOrNull()
                     if (firstReal != null) selectedCategory.value = firstReal
                 }
 
                 moviesDeferred.await().onSuccess { list ->
                     allMovies.value = list
-                    val firstCatId  = selectedCategory.value?.categoryId
-                    movies.value = if (firstCatId != null) {
+                    val firstCatId = selectedCategory.value?.categoryId
+                    movies.value = if (firstCatId != null)
                         list.filter { it.categoryId == firstCatId }
-                    } else list
+                    else list
                     if (movies.value.isNotEmpty()) selectedMovie.value = movies.value.first()
                     dataLoaded = true
                 }.onFailure { e ->
@@ -85,21 +84,20 @@ class MoviesViewModel @Inject constructor(
             MOVIE_CAT_ALL -> allMovies.value
 
             MOVIE_CAT_FAVOURITES -> {
-                val favIds = favouritesManager.getByType("movie").map { fav ->
-                    fav.id.removePrefix("movie_").toIntOrNull()
-                }
+                val favIds = favouritesManager.getByType("movie")
+                    .mapNotNull { it.id.removePrefix("movie_").toIntOrNull() }
                 allMovies.value.filter { it.streamId in favIds }
             }
 
             MOVIE_CAT_CONTINUE -> {
-                // Show movies that have a saved resume position
+                // Movies with a saved resume position > 5 seconds
                 allMovies.value.filter { movie ->
                     positionManager.hasResumePoint("movie_${movie.streamId}")
                 }
             }
 
             MOVIE_CAT_RECENTLY_ADDED -> {
-                // Sort by "added" timestamp descending, take 30
+                // Sort by added timestamp descending, take 30
                 allMovies.value
                     .sortedByDescending { it.added?.toLongOrNull() ?: 0L }
                     .take(30)
