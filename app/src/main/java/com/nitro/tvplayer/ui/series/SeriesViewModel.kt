@@ -6,15 +6,24 @@ import com.nitro.tvplayer.data.model.Category
 import com.nitro.tvplayer.data.model.Episode
 import com.nitro.tvplayer.data.model.SeriesItem
 import com.nitro.tvplayer.data.repository.ContentRepository
+import com.nitro.tvplayer.utils.FavouritesManager
+import com.nitro.tvplayer.utils.PlaybackPositionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+const val SERIES_CAT_ALL            = "__ALL__"
+const val SERIES_CAT_FAVOURITES     = "__FAVOURITES__"
+const val SERIES_CAT_CONTINUE       = "__CONTINUE__"
+const val SERIES_CAT_RECENTLY_ADDED = "__RECENT__"
+
 @HiltViewModel
 class SeriesViewModel @Inject constructor(
-    private val repo: ContentRepository
+    private val repo: ContentRepository,
+    private val favouritesManager: FavouritesManager,
+    private val positionManager: PlaybackPositionManager
 ) : ViewModel() {
 
     val categories       = MutableStateFlow<List<Category>>(emptyList())
@@ -27,11 +36,9 @@ class SeriesViewModel @Inject constructor(
     val loading          = MutableStateFlow(false)
     val error            = MutableStateFlow<String?>(null)
 
-    private val allSeries   = MutableStateFlow<List<SeriesItem>>(emptyList())
-    private val allEpisodes = MutableStateFlow<Map<String, List<Episode>>>(emptyMap())
-    private var dataLoaded  = false
-
-    // Cache series info to avoid re-fetching
+    private val allSeries    = MutableStateFlow<List<SeriesItem>>(emptyList())
+    private val allEpisodes  = MutableStateFlow<Map<String, List<Episode>>>(emptyMap())
+    private var dataLoaded   = false
     private val seriesInfoLoaded = mutableSetOf<Int>()
 
     init { loadAll() }
@@ -42,30 +49,28 @@ class SeriesViewModel @Inject constructor(
             loading.value = true
             error.value   = null
             try {
-                // ── Load categories AND series list in parallel ──
                 val catsDeferred   = async { repo.getSeriesCategories() }
                 val seriesDeferred = async { repo.getSeries() }
 
                 catsDeferred.await().onSuccess { catList ->
+                    val special = listOf(
+                        Category(SERIES_CAT_ALL,            "All",               0),
+                        Category(SERIES_CAT_FAVOURITES,     "Favourites",        0),
+                        Category(SERIES_CAT_CONTINUE,       "Continue Watching", 0),
+                        Category(SERIES_CAT_RECENTLY_ADDED, "Recently Added",    0)
+                    )
+                    categories.value = special + catList
                     val firstReal = catList.firstOrNull()
-                    categories.value = catList
                     if (firstReal != null) selectedCategory.value = firstReal
                 }
 
                 seriesDeferred.await().onSuccess { list ->
                     allSeries.value = list
-
-                    // Show series for first category only (faster than loading all)
-                    val firstCatId = selectedCategory.value?.categoryId
+                    val firstCatId  = selectedCategory.value?.categoryId
                     seriesList.value = if (firstCatId != null) {
                         list.filter { it.categoryId == firstCatId }
                     } else list
-
-                    // Auto-select first series but DON'T load episodes yet
-                    // Episodes load on demand when user clicks a series
                     if (seriesList.value.isNotEmpty()) {
-                        selectedSeries.value = seriesList.value.first()
-                        // Load first series info in background
                         loadSeriesInfo(seriesList.value.first(), silent = true)
                     }
                     dataLoaded = true
@@ -82,16 +87,38 @@ class SeriesViewModel @Inject constructor(
 
     fun filterByCategory(category: Category) {
         selectedCategory.value = category
-        val filtered = allSeries.value.filter { it.categoryId == category.categoryId }
-        seriesList.value = filtered
-        if (filtered.isNotEmpty()) {
-            selectedSeries.value = filtered.first()
-            loadSeriesInfo(filtered.first())
+        val filtered = when (category.categoryId) {
+            SERIES_CAT_ALL -> allSeries.value
+
+            SERIES_CAT_FAVOURITES -> {
+                val favIds = favouritesManager.getByType("series").map { fav ->
+                    fav.id.removePrefix("series_").toIntOrNull()
+                }
+                allSeries.value.filter { it.seriesId in favIds }
+            }
+
+            SERIES_CAT_CONTINUE -> {
+                // Show series that have any episode with a resume point
+                allSeries.value.filter { series ->
+                    // Check if any episode of this series has been watched
+                    positionManager.hasResumePoint("series_${series.seriesId}")
+                }
+            }
+
+            SERIES_CAT_RECENTLY_ADDED -> {
+                allSeries.value
+                    .sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }
+                    .take(30)
+            }
+
+            else -> allSeries.value.filter { it.categoryId == category.categoryId }
         }
+        seriesList.value = filtered
+        if (filtered.isNotEmpty()) loadSeriesInfo(filtered.first())
     }
 
     fun selectSeries(series: SeriesItem) {
-        if (selectedSeries.value?.seriesId == series.seriesId) return // already selected
+        if (selectedSeries.value?.seriesId == series.seriesId) return
         loadSeriesInfo(series)
     }
 
@@ -99,13 +126,10 @@ class SeriesViewModel @Inject constructor(
         viewModelScope.launch {
             selectedSeries.value = series
             if (!silent) loading.value = true
-
-            // Skip if already loaded and cached
             if (series.seriesId in seriesInfoLoaded) {
                 loading.value = false
                 return@launch
             }
-
             try {
                 repo.getSeriesInfo(series.seriesId.toString()).onSuccess { info ->
                     val eps  = info.episodes ?: emptyMap()
@@ -114,7 +138,7 @@ class SeriesViewModel @Inject constructor(
                     seasons.value        = keys
                     selectedSeason.value = keys.firstOrNull() ?: "1"
                     episodes.value       = eps[selectedSeason.value] ?: emptyList()
-                    seriesInfoLoaded.add(series.seriesId) // mark as loaded
+                    seriesInfoLoaded.add(series.seriesId)
                 }
             } catch (e: Exception) {
                 if (!silent) error.value = e.message
@@ -130,13 +154,11 @@ class SeriesViewModel @Inject constructor(
     }
 
     fun search(query: String) {
-        seriesList.value = if (query.isEmpty()) {
-            val catId = selectedCategory.value?.categoryId
-            if (catId != null) allSeries.value.filter { it.categoryId == catId }
-            else allSeries.value
-        } else {
-            allSeries.value.filter { it.name.contains(query, ignoreCase = true) }
+        if (query.isEmpty()) {
+            filterByCategory(selectedCategory.value ?: return)
+            return
         }
+        seriesList.value = allSeries.value.filter { it.name.contains(query, ignoreCase = true) }
     }
 
     fun buildEpisodeUrl(episodeId: String, ext: String) =
