@@ -30,7 +30,10 @@ class SeriesFragment : Fragment() {
     private lateinit var episodeAdapter: EpisodeAdapter
     private lateinit var seasonAdapter: SeasonAdapter
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
         _binding = FragmentSeriesBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -57,16 +60,34 @@ class SeriesFragment : Fragment() {
 
         seasonAdapter = SeasonAdapter { viewModel.selectSeason(it) }
         binding.rvSeasons.apply {
-            layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+            layoutManager = LinearLayoutManager(
+                requireContext(), LinearLayoutManager.HORIZONTAL, false
+            )
             adapter = seasonAdapter
         }
 
         episodeAdapter = EpisodeAdapter { episode ->
-            val url = viewModel.buildEpisodeUrl(episode.id, episode.extension ?: "mkv")
+            // Build full episode playlist for current season (enables Prev/Next)
+            val episodes = viewModel.episodes.value
+            val index    = episodes.indexOfFirst { it.id == episode.id }
+            val seriesName = viewModel.selectedSeries.value?.name ?: ""
+            val season   = viewModel.selectedSeason.value
+
+            val urls = ArrayList(episodes.map {
+                viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv")
+            })
+            val titles = ArrayList(episodes.map {
+                "$seriesName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}"
+            })
+            // Use episode ID as content ID for resume
+            val ids = ArrayList(episodes.map { "ep_${it.id}" })
+
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
-                    putExtra(PlayerActivity.EXTRA_URL, url)
-                    putExtra(PlayerActivity.EXTRA_TITLE, episode.title ?: "Episode ${episode.episodeNum}")
+                    putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
+                    putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,   titles)
+                    putStringArrayListExtra(PlayerActivity.EXTRA_IDS,      ids)
+                    putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
                     putExtra(PlayerActivity.EXTRA_TYPE, "series")
                 }
             )
@@ -85,17 +106,17 @@ class SeriesFragment : Fragment() {
         lifecycleScope.launch {
             viewModel.selectedSeries.collect { series ->
                 series?.let {
-                    binding.tvSeriesTitle.text = it.name
-                    binding.tvSeriesInfo.text = "${it.releaseDate ?: ""} • ${it.genre ?: ""}"
+                    binding.tvSeriesTitle.text  = it.name
+                    binding.tvSeriesInfo.text   = "${it.releaseDate ?: ""} • ${it.genre ?: ""}"
                     binding.tvSeriesRating.text = "★ ${it.rating5 ?: it.rating ?: "N/A"}"
-                    binding.tvSeriesPlot.text = it.plot ?: "No description available."
+                    binding.tvSeriesPlot.text   = it.plot ?: "No description available."
                     binding.ivSeriesCover.loadUrl(it.cover)
                 }
             }
         }
         lifecycleScope.launch {
-            viewModel.loading.collect { loading ->
-                binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
+            viewModel.loading.collect {
+                binding.progressBar.visibility = if (it) View.VISIBLE else View.GONE
             }
         }
     }
