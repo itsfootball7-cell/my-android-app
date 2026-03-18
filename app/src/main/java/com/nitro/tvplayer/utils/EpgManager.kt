@@ -14,11 +14,11 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 data class EpgInfo(
-    val currentShow:     String,
-    val nextShow:        String,
+    val currentShow: String,
+    val nextShow: String,
     val progressPercent: Int,
-    val startTime:       String,
-    val endTime:         String
+    val startTime: String,
+    val endTime: String
 )
 
 @Singleton
@@ -28,14 +28,14 @@ class EpgManager @Inject constructor(
     private val cache = mutableMapOf<Int, EpgInfo>()
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    // ── Returns cached EPG instantly (called every 500ms) ──
     fun getEpg(streamId: Int): EpgInfo? = cache[streamId]
 
-    // ── Fetches EPG from API if not cached ──
     fun fetchEpg(streamId: Int, onResult: (EpgInfo?) -> Unit) {
         val cached = cache[streamId]
-        if (cached != null) { onResult(cached); return }
-
+        if (cached != null) {
+            onResult(cached)
+            return
+        }
         scope.launch {
             try {
                 repo.getEpg(streamId.toString()).onSuccess { response ->
@@ -58,37 +58,37 @@ class EpgManager @Inject constructor(
 
     private fun parseEpg(listings: List<EpgListing>): EpgInfo? {
         if (listings.isEmpty()) return null
-        val now     = System.currentTimeMillis() / 1000
+        val now = System.currentTimeMillis() / 1000
         val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
 
         var current: EpgListing? = null
-        var next: EpgListing?    = null
+        var next: EpgListing? = null
 
         for (i in listings.indices) {
-            val l     = listings[i]
+            val l = listings[i]
             val start = l.startTimestamp?.toLongOrNull() ?: continue
-            val stop  = l.stopTimestamp?.toLongOrNull()  ?: continue
+            val stop = l.stopTimestamp?.toLongOrNull() ?: continue
             if (now in start..stop) {
                 current = l
-                next    = listings.getOrNull(i + 1)
+                next = listings.getOrNull(i + 1)
                 break
             }
         }
 
         current ?: return null
 
-        val startTs  = current.startTimestamp?.toLongOrNull() ?: 0L
-        val stopTs   = current.stopTimestamp?.toLongOrNull()  ?: 0L
+        val startTs = current.startTimestamp?.toLongOrNull() ?: 0L
+        val stopTs = current.stopTimestamp?.toLongOrNull() ?: 0L
         val duration = (stopTs - startTs).coerceAtLeast(1)
-        val elapsed  = (now - startTs).coerceAtLeast(0)
+        val elapsed = (now - startTs).coerceAtLeast(0)
         val progress = ((elapsed * 100f) / duration).toInt().coerceIn(0, 100)
 
         return EpgInfo(
-            currentShow     = decodeTitle(current.title),
-            nextShow        = next?.let { "Next: ${decodeTitle(it.title)}" } ?: "Next: No Program Found",
+            currentShow = decodeTitle(current.title),
+            nextShow = next?.let { "Next: ${decodeTitle(it.title)}" } ?: "Next: No Program Found",
             progressPercent = progress,
-            startTime       = timeFmt.format(Date(startTs * 1000)),
-            endTime         = timeFmt.format(Date(stopTs  * 1000))
+            startTime = timeFmt.format(Date(startTs * 1000)),
+            endTime = timeFmt.format(Date(stopTs * 1000))
         )
     }
 
@@ -96,7 +96,9 @@ class EpgManager @Inject constructor(
         if (title.isNullOrBlank()) return "No Program Found"
         return try {
             String(Base64.decode(title, Base64.DEFAULT), Charsets.UTF_8).trim()
-        } catch (e: Exception) { title }
+        } catch (e: Exception) {
+            title
+        }
     }
 
     fun clearCache() = cache.clear()
