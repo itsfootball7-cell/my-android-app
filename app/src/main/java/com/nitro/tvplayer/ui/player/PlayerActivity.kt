@@ -29,12 +29,12 @@ import kotlin.math.abs
 class PlayerActivity : AppCompatActivity() {
 
     companion object {
-        const val EXTRA_URL          = "extra_url"
-        const val EXTRA_TITLE        = "extra_title"
-        const val EXTRA_TYPE         = "extra_type"   // "live" | "movie" | "series"
-        const val EXTRA_PLAYLIST     = "extra_playlist"  // ArrayList<String> of URLs
-        const val EXTRA_TITLES       = "extra_titles"    // ArrayList<String> of titles
-        const val EXTRA_START_INDEX  = "extra_start_index"
+        const val EXTRA_URL         = "extra_url"
+        const val EXTRA_TITLE       = "extra_title"
+        const val EXTRA_TYPE        = "extra_type"       // "live" | "movie" | "series"
+        const val EXTRA_PLAYLIST    = "extra_playlist"   // ArrayList<String> urls
+        const val EXTRA_TITLES      = "extra_titles"     // ArrayList<String> titles
+        const val EXTRA_START_INDEX = "extra_start_index"
 
         private const val CONTROLS_HIDE_DELAY = 4000L
         private const val SWIPE_THRESHOLD     = 8f
@@ -49,24 +49,25 @@ class PlayerActivity : AppCompatActivity() {
 
     @Inject lateinit var playerPrefs: PlayerPrefs
 
-    // Playlist support
-    private var urls: ArrayList<String> = arrayListOf()
-    private var titles: ArrayList<String> = arrayListOf()
+    // Playlist
+    private var urls         = arrayListOf<String>()
+    private var titles       = arrayListOf<String>()
     private var currentIndex = 0
-    private var contentType = "live"
+    private var contentType  = "live"   // "live" | "movie" | "series"
+    private val isLive get() = contentType == "live"
 
     // Touch
-    private var touchStartX    = 0f
-    private var touchStartY    = 0f
-    private var touchStartVol  = 0
-    private var touchStartBrt  = 0f
-    private var isSwiping      = false
-    private var swipeType      = ""
-    private var screenWidth    = 0
-    private var screenHeight   = 0
+    private var touchStartX   = 0f
+    private var touchStartY   = 0f
+    private var touchStartVol = 0
+    private var touchStartBrt = 0f
+    private var isSwiping     = false
+    private var swipeType     = ""
+    private var screenWidth   = 0
+    private var screenHeight  = 0
     private var controlsVisible = false
 
-    // Aspect ratio — persisted
+    // Aspect ratio — persisted globally
     private val aspectRatios = listOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT,
         AspectRatioFrameLayout.RESIZE_MODE_FILL,
@@ -77,9 +78,9 @@ class PlayerActivity : AppCompatActivity() {
     private val aspectLabels = listOf("Fit", "Fill", "Zoom", "Fix-W", "Fix-H")
     private var aspectIndex  = 0
 
-    private val hideControlsRunnable = Runnable { fadeOutControls() }
+    private val hideControlsRunnable = Runnable { fadeOutAll() }
 
-    // ─── Lifecycle ────────────────────────────────────────────
+    // ─── onCreate ─────────────────────────────────────────────
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -92,42 +93,46 @@ class PlayerActivity : AppCompatActivity() {
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        audioManager  = getSystemService(AUDIO_SERVICE) as AudioManager
-        screenWidth   = resources.displayMetrics.widthPixels
-        screenHeight  = resources.displayMetrics.heightPixels
-        contentType   = intent.getStringExtra(EXTRA_TYPE) ?: "live"
+        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        screenWidth  = resources.displayMetrics.widthPixels
+        screenHeight = resources.displayMetrics.heightPixels
+        contentType  = intent.getStringExtra(EXTRA_TYPE) ?: "live"
 
         // Build playlist
-        val playlistUrls   = intent.getStringArrayListExtra(EXTRA_PLAYLIST)
-        val playlistTitles = intent.getStringArrayListExtra(EXTRA_TITLES)
-        if (!playlistUrls.isNullOrEmpty()) {
-            urls   = playlistUrls
-            titles = playlistTitles ?: arrayListOf()
+        val pUrls   = intent.getStringArrayListExtra(EXTRA_PLAYLIST)
+        val pTitles = intent.getStringArrayListExtra(EXTRA_TITLES)
+        if (!pUrls.isNullOrEmpty()) {
+            urls         = pUrls
+            titles       = pTitles ?: arrayListOf()
             currentIndex = intent.getIntExtra(EXTRA_START_INDEX, 0)
         } else {
-            // Single item — wrap it
-            val singleUrl   = intent.getStringExtra(EXTRA_URL) ?: return
-            val singleTitle = intent.getStringExtra(EXTRA_TITLE) ?: ""
-            urls   = arrayListOf(singleUrl)
-            titles = arrayListOf(singleTitle)
-            currentIndex = 0
+            val u = intent.getStringExtra(EXTRA_URL) ?: return
+            val t = intent.getStringExtra(EXTRA_TITLE) ?: ""
+            urls   = arrayListOf(u)
+            titles = arrayListOf(t)
         }
 
         // Restore persisted aspect ratio
         aspectIndex = playerPrefs.getAspectRatioIndex()
 
-        // All controls start hidden
+        // Everything starts invisible/hidden
         listOf(
             binding.topBar, binding.bottomBar,
+            binding.centerControls,
             binding.leftBarContainer, binding.rightBarContainer
         ).forEach { it.alpha = 0f; it.visibility = View.INVISIBLE }
+
+        // CC button: only for movies/series, hidden for live
+        binding.btnSubtitles.visibility = if (isLive) View.GONE else View.VISIBLE
+
+        // Live badge only for live
+        binding.tvLiveBadge.visibility = if (isLive) View.VISIBLE else View.GONE
 
         binding.btnBack.setOnClickListener { finish() }
 
         updateVolumeUI()
         updateBrightnessUI(0.5f)
-        setupAspectRatioButton()
-        setupSubtitleButton()
+        setupAspectButtons()
         setupTouchGestures()
         playIndex(currentIndex)
     }
@@ -140,22 +145,25 @@ class PlayerActivity : AppCompatActivity() {
         val url   = urls[index]
         val title = if (index < titles.size) titles[index] else ""
 
-        // Update channel info — always visible
-        binding.tvChannelName.text = title
-        binding.tvTitle.text       = title
+        // Show program info in bottom bar only
+        binding.tvProgramInfo.text = title
+        // tvTitle in top bar also updated
+        binding.tvTitle.text = title
 
-        // Update prev/next button states
-        binding.btnPrev.alpha = if (currentIndex > 0) 1f else 0.3f
-        binding.btnNext.alpha = if (currentIndex < urls.size - 1) 1f else 0.3f
+        // Prev/Next: only show if functional
+        // For live: always show both (cycle through channels)
+        // For vod/series: show only if there is a prev/next
+        binding.btnPrev.visibility = if (currentIndex > 0) View.VISIBLE else View.INVISIBLE
+        binding.btnNext.visibility = if (currentIndex < urls.size - 1) View.VISIBLE else View.INVISIBLE
 
-        // Release old player
+        // Release old
         player?.release()
         binding.progressBar.visibility = View.VISIBLE
         binding.tvError.visibility = View.GONE
 
         trackSelector = DefaultTrackSelector(this)
         player = ExoPlayer.Builder(this).setTrackSelector(trackSelector).build()
-        binding.playerView.player    = player
+        binding.playerView.player        = player
         binding.playerView.useController = false
         binding.playerView.keepScreenOn  = true
         binding.playerView.resizeMode    = aspectRatios[aspectIndex]
@@ -163,7 +171,7 @@ class PlayerActivity : AppCompatActivity() {
         player!!.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
         player!!.prepare()
         player!!.playWhenReady = true
-        updatePlayPauseBtn()
+        syncPlayPauseBtn()
 
         player!!.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -171,79 +179,69 @@ class PlayerActivity : AppCompatActivity() {
                     Player.STATE_BUFFERING -> binding.progressBar.visibility = View.VISIBLE
                     Player.STATE_READY     -> {
                         binding.progressBar.visibility = View.GONE
-                        binding.tvError.visibility = View.GONE
+                        binding.tvError.visibility     = View.GONE
+                        // Setup CC after stream is ready (so tracks are available)
+                        if (!isLive) setupSubtitleButton()
                     }
                     Player.STATE_ENDED -> {
                         // Auto-advance for series/movies
-                        if (contentType != "live" && currentIndex < urls.size - 1) {
+                        if (!isLive && currentIndex < urls.size - 1) {
                             playIndex(currentIndex + 1)
                         }
                     }
                     Player.STATE_IDLE -> binding.progressBar.visibility = View.GONE
                 }
             }
-
             override fun onPlayerError(error: PlaybackException) {
                 binding.progressBar.visibility = View.GONE
-                binding.tvError.text = "Playback error: ${error.message}"
-                binding.tvError.visibility = View.VISIBLE
+                binding.tvError.text           = "Playback error: ${error.message}"
+                binding.tvError.visibility     = View.VISIBLE
             }
         })
 
-        setupPlayPauseButton()
-        setupPrevNextButtons()
-    }
-
-    // ─── Play / Pause ─────────────────────────────────────────
-    private fun setupPlayPauseButton() {
+        // Playback controls
         binding.btnPlayPause.setOnClickListener {
-            if (player?.isPlaying == true) {
-                player?.pause()
-            } else {
-                player?.play()
-            }
-            updatePlayPauseBtn()
+            if (player?.isPlaying == true) player?.pause() else player?.play()
+            syncPlayPauseBtn()
             resetHideControls()
+        }
+
+        binding.btnPrev.setOnClickListener {
+            if (currentIndex > 0) { playIndex(currentIndex - 1); resetHideControls() }
+        }
+
+        binding.btnNext.setOnClickListener {
+            if (currentIndex < urls.size - 1) { playIndex(currentIndex + 1); resetHideControls() }
         }
     }
 
-    private fun updatePlayPauseBtn() {
+    private fun syncPlayPauseBtn() {
         binding.btnPlayPause.text = if (player?.isPlaying == true) "⏸" else "▶"
     }
 
-    // ─── Prev / Next ──────────────────────────────────────────
-    private fun setupPrevNextButtons() {
-        binding.btnPrev.setOnClickListener {
-            if (currentIndex > 0) {
-                playIndex(currentIndex - 1)
-                resetHideControls()
-            }
-        }
-        binding.btnNext.setOnClickListener {
-            if (currentIndex < urls.size - 1) {
-                playIndex(currentIndex + 1)
-                resetHideControls()
-            }
-        }
-    }
-
-    // ─── Aspect Ratio (persistent) ────────────────────────────
-    private fun setupAspectRatioButton() {
+    // ─── Aspect Ratio (both top and bottom buttons, synced) ───
+    private fun setupAspectButtons() {
         updateAspectLabel()
-        binding.btnAspectRatio.setOnClickListener {
+
+        val cycleAspect = {
             aspectIndex = (aspectIndex + 1) % aspectRatios.size
             binding.playerView.resizeMode = aspectRatios[aspectIndex]
             updateAspectLabel()
-            playerPrefs.saveAspectRatioIndex(aspectIndex) // persist!
+            playerPrefs.saveAspectRatioIndex(aspectIndex)
             resetHideControls()
         }
+
+        binding.btnAspectRatio.setOnClickListener { cycleAspect() }
+        binding.btnAspectRatioBottom.setOnClickListener { cycleAspect() }
     }
 
     private fun updateAspectLabel() {
-        binding.btnAspectRatio.text = "⛶ ${aspectLabels[aspectIndex]}"
+        val label = "⛶ ${aspectLabels[aspectIndex]}"
+        binding.btnAspectRatio.text       = label
+        binding.btnAspectRatioBottom.text = label
     }
 
-    // ─── Subtitles / CC ───────────────────────────────────────
+    // ─── Subtitles / CC (VOD only) ────────────────────────────
     private fun setupSubtitleButton() {
         binding.btnSubtitles.setOnClickListener { view ->
             try {
@@ -268,6 +266,7 @@ class PlayerActivity : AppCompatActivity() {
                             trackSelector.parameters = trackSelector.buildUponParameters()
                                 .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                                 .setPreferredTextLanguage(null).build()
+                            binding.btnSubtitles.alpha = 0.5f
                         } else {
                             var count = 0
                             textGroups.forEach { group ->
@@ -275,6 +274,7 @@ class PlayerActivity : AppCompatActivity() {
                                     if (count == item.itemId) {
                                         trackSelector.parameters = trackSelector.buildUponParameters()
                                             .addOverride(TrackSelectionOverride(group.mediaTrackGroup, i)).build()
+                                        binding.btnSubtitles.alpha = 1.0f
                                     }
                                     count++
                                 }
@@ -294,29 +294,27 @@ class PlayerActivity : AppCompatActivity() {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         val pct = if (max > 0) (cur * 100f / max).toInt() else 0
-        binding.tvVolumeValue.text   = "$pct%"
+        binding.tvVolumeValue.text     = "$pct%"
         binding.tvVolumeIndicator.text = "🔊 $pct%"
-        binding.volumeBar.progress   = pct
+        binding.volumeBar.progress     = pct
         updateFillBar(binding.rightVolumeBarFill, pct)
     }
 
     private fun updateBrightnessUI(brightness: Float) {
         val pct = (brightness * 100).toInt().coerceIn(0, 100)
-        binding.tvBrightnessValue.text   = "$pct%"
+        binding.tvBrightnessValue.text     = "$pct%"
         binding.tvBrightnessIndicator.text = "☀ $pct%"
-        binding.brightnessBar.progress   = pct
+        binding.brightnessBar.progress     = pct
         updateFillBar(binding.leftBrightnessBarFill, pct)
     }
 
-    private fun updateFillBar(fillView: View, pct: Int) {
-        val maxPx = (150 * resources.displayMetrics.density).toInt()
+    private fun updateFillBar(v: View, pct: Int) {
+        val maxPx  = (140 * resources.displayMetrics.density).toInt()
         val fillPx = (maxPx * pct / 100f).toInt().coerceAtLeast(4)
-        val p = fillView.layoutParams
-        p.height = fillPx
-        fillView.layoutParams = p
+        val p = v.layoutParams; p.height = fillPx; v.layoutParams = p
     }
 
-    // ─── Fade Helpers ─────────────────────────────────────────
+    // ─── Fade helpers ─────────────────────────────────────────
     private fun fadeIn(view: View) {
         if (view.visibility == View.VISIBLE && view.alpha == 1f) return
         view.visibility = View.VISIBLE
@@ -324,40 +322,41 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     private fun fadeOut(view: View) {
-        view.animate().alpha(0f).setDuration(FADE_DURATION).withEndAction {
-            view.visibility = View.INVISIBLE
-        }.start()
+        view.animate().alpha(0f).setDuration(FADE_DURATION)
+            .withEndAction { view.visibility = View.INVISIBLE }.start()
     }
 
-    private fun fadeInControls() {
+    private fun fadeInAll() {
         controlsVisible = true
         fadeIn(binding.topBar)
         fadeIn(binding.bottomBar)
+        fadeIn(binding.centerControls)
         fadeIn(binding.leftBarContainer)
         fadeIn(binding.rightBarContainer)
     }
 
-    private fun fadeOutControls() {
+    private fun fadeOutAll() {
         controlsVisible = false
         fadeOut(binding.topBar)
         fadeOut(binding.bottomBar)
+        fadeOut(binding.centerControls)
         fadeOut(binding.leftBarContainer)
         fadeOut(binding.rightBarContainer)
         binding.volumeIndicator.visibility    = View.GONE
         binding.brightnessIndicator.visibility = View.GONE
     }
 
-    private fun scheduleHideControls() {
+    private fun scheduleHide() {
         handler.removeCallbacks(hideControlsRunnable)
         handler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY)
     }
 
     private fun resetHideControls() {
-        fadeInControls()
-        scheduleHideControls()
+        fadeInAll()
+        scheduleHide()
     }
 
-    // ─── Touch Gestures ───────────────────────────────────────
+    // ─── Touch & Swipe gestures ───────────────────────────────
     @SuppressLint("ClickableViewAccessibility")
     private fun setupTouchGestures() {
         binding.touchOverlay.setOnTouchListener { _, event ->
@@ -412,13 +411,11 @@ class PlayerActivity : AppCompatActivity() {
 
                 MotionEvent.ACTION_UP -> {
                     if (!isSwiping) {
-                        if (controlsVisible) {
-                            fadeOutControls()
-                        } else {
-                            fadeInControls()
-                            scheduleHideControls()
-                        }
+                        // Tap: toggle controls
+                        if (controlsVisible) fadeOutAll()
+                        else { fadeInAll(); scheduleHide() }
                     } else {
+                        // End of swipe: hide indicators after delay
                         handler.postDelayed({
                             binding.volumeIndicator.visibility    = View.GONE
                             binding.brightnessIndicator.visibility = View.GONE
@@ -437,6 +434,7 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    // ─── Lifecycle ────────────────────────────────────────────
     override fun onPause()   { super.onPause();  player?.pause() }
     override fun onResume()  { super.onResume(); player?.play()  }
     override fun onDestroy() {
