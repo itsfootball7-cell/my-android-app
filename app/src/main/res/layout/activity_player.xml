@@ -12,7 +12,7 @@
         android:layout_height="match_parent"
         android:keepScreenOn="true"/>
 
-    <!-- Full screen touch overlay for gestures -->
+    <!-- Full screen touch overlay -->
     <View
         android:id="@+id/touchOverlay"
         android:layout_width="match_parent"
@@ -42,41 +42,66 @@
         android:padding="12dp"
         android:background="#90000000"/>
 
-    <!-- ═══ LEFT SIDE: BRIGHTNESS BAR (always visible) ═══ -->
+    <!-- Nitro Watermark -->
     <LinearLayout
-        android:layout_width="28dp"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="14dp"
+        android:orientation="horizontal"
+        android:alpha="0.35">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Nitro"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tv"
+            android:textColor="#FFB300"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:layout_marginStart="2dp"/>
+    </LinearLayout>
+
+    <!-- ═══ LEFT BAR CONTAINER: Brightness (fades in/out) ═══ -->
+    <LinearLayout
+        android:id="@+id/leftBarContainer"
+        android:layout_width="32dp"
         android:layout_height="200dp"
         android:layout_gravity="center_vertical|start"
-        android:layout_marginStart="8dp"
+        android:layout_marginStart="10dp"
         android:orientation="vertical"
-        android:gravity="center_horizontal">
+        android:gravity="center_horizontal"
+        android:background="#99000000"
+        android:padding="6dp"
+        android:visibility="invisible"
+        android:alpha="0">
 
-        <!-- Sun icon -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="☀"
-            android:textColor="#CCFFFFFF"
-            android:textSize="14sp"
+            android:textColor="#4FC3F7"
+            android:textSize="13sp"
             android:layout_marginBottom="4dp"/>
 
-        <!-- Vertical progress bar (brightness) -->
         <FrameLayout
             android:layout_width="6dp"
-            android:layout_height="150dp"
+            android:layout_height="140dp"
             android:background="#33FFFFFF">
-
-            <!-- Fill bar - controlled programmatically -->
             <View
                 android:id="@+id/leftBrightnessBarFill"
                 android:layout_width="6dp"
-                android:layout_height="75dp"
+                android:layout_height="70dp"
                 android:layout_gravity="bottom"
                 android:background="#4FC3F7"/>
-
         </FrameLayout>
 
-        <!-- Hidden ProgressBar for value tracking -->
+        <!-- Hidden tracker -->
         <ProgressBar
             android:id="@+id/leftBrightnessBar"
             style="@android:style/Widget.ProgressBar.Horizontal"
@@ -97,16 +122,20 @@
 
     </LinearLayout>
 
-    <!-- ═══ RIGHT SIDE: VOLUME BAR (always visible) ═══ -->
+    <!-- ═══ RIGHT BAR CONTAINER: Volume (fades in/out) ═══ -->
     <LinearLayout
-        android:layout_width="28dp"
+        android:id="@+id/rightBarContainer"
+        android:layout_width="32dp"
         android:layout_height="200dp"
         android:layout_gravity="center_vertical|end"
-        android:layout_marginEnd="8dp"
+        android:layout_marginEnd="10dp"
         android:orientation="vertical"
-        android:gravity="center_horizontal">
+        android:gravity="center_horizontal"
+        android:background="#99000000"
+        android:padding="6dp"
+        android:visibility="invisible"
+        android:alpha="0">
 
-        <!-- Volume icon -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -114,22 +143,19 @@
             android:textSize="12sp"
             android:layout_marginBottom="4dp"/>
 
-        <!-- Vertical progress bar (volume) -->
         <FrameLayout
             android:layout_width="6dp"
-            android:layout_height="150dp"
+            android:layout_height="140dp"
             android:background="#33FFFFFF">
-
             <View
                 android:id="@+id/rightVolumeBarFill"
                 android:layout_width="6dp"
-                android:layout_height="75dp"
+                android:layout_height="70dp"
                 android:layout_gravity="bottom"
                 android:background="#FFB300"/>
-
         </FrameLayout>
 
-        <!-- Hidden ProgressBar for value tracking -->
+        <!-- Hidden tracker -->
         <ProgressBar
             android:id="@+id/rightVolumeBar"
             style="@android:style/Widget.ProgressBar.Horizontal"
@@ -150,19 +176,19 @@
 
     </LinearLayout>
 
-    <!-- ═══ CENTER SWIPE INDICATORS (show during swipe) ═══ -->
+    <!-- ═══ SWIPE POPUP INDICATORS ═══ -->
 
-    <!-- Volume indicator (center right) -->
+    <!-- Volume popup (right side, center) -->
     <LinearLayout
         android:id="@+id/volumeIndicator"
-        android:layout_width="120dp"
+        android:layout_width="110dp"
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical|end"
-        android:layout_marginEnd="50dp"
+        android:layout_marginEnd="52dp"
         android:orientation="vertical"
         android:gravity="center"
         android:background="#CC000000"
-        android:padding="12dp"
+        android:padding="10dp"
         android:visibility="gone">
 
         <TextView
@@ -171,32 +197,32 @@
             android:layout_height="wrap_content"
             android:text="🔊 50%"
             android:textColor="#FFB300"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"/>
 
         <ProgressBar
             android:id="@+id/volumeBar"
             style="@android:style/Widget.ProgressBar.Horizontal"
             android:layout_width="match_parent"
-            android:layout_height="8dp"
+            android:layout_height="6dp"
             android:max="100"
             android:progress="50"
             android:progressTint="#FFB300"
-            android:layout_marginTop="8dp"/>
+            android:layout_marginTop="6dp"/>
 
     </LinearLayout>
 
-    <!-- Brightness indicator (center left) -->
+    <!-- Brightness popup (left side, center) -->
     <LinearLayout
         android:id="@+id/brightnessIndicator"
-        android:layout_width="120dp"
+        android:layout_width="110dp"
         android:layout_height="wrap_content"
         android:layout_gravity="center_vertical|start"
-        android:layout_marginStart="50dp"
+        android:layout_marginStart="52dp"
         android:orientation="vertical"
         android:gravity="center"
         android:background="#CC000000"
-        android:padding="12dp"
+        android:padding="10dp"
         android:visibility="gone">
 
         <TextView
@@ -205,47 +231,22 @@
             android:layout_height="wrap_content"
             android:text="☀ 50%"
             android:textColor="#4FC3F7"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"/>
 
         <ProgressBar
             android:id="@+id/brightnessBar"
             style="@android:style/Widget.ProgressBar.Horizontal"
             android:layout_width="match_parent"
-            android:layout_height="8dp"
+            android:layout_height="6dp"
             android:max="100"
             android:progress="50"
             android:progressTint="#4FC3F7"
-            android:layout_marginTop="8dp"/>
+            android:layout_marginTop="6dp"/>
 
     </LinearLayout>
 
-    <!-- Nitro Watermark -->
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_margin="14dp"
-        android:orientation="horizontal"
-        android:alpha="0.4">
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Nitro"
-            android:textColor="#FFFFFF"
-            android:textSize="12sp"
-            android:textStyle="bold"/>
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Tv"
-            android:textColor="#FFB300"
-            android:textSize="10sp"
-            android:textStyle="bold"
-            android:layout_marginStart="2dp"/>
-    </LinearLayout>
-
-    <!-- ═══ TOP BAR (auto hides) ═══ -->
+    <!-- ═══ TOP BAR (fades in/out) ═══ -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -255,7 +256,9 @@
         android:orientation="horizontal"
         android:paddingStart="12dp"
         android:paddingEnd="12dp"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:visibility="invisible"
+        android:alpha="0">
 
         <ImageButton
             android:id="@+id/btnBack"
@@ -278,7 +281,21 @@
             android:maxLines="1"
             android:ellipsize="end"/>
 
-        <!-- Quality/Resolution -->
+        <!-- Aspect Ratio button -->
+        <TextView
+            android:id="@+id/btnAspectRatio"
+            android:layout_width="wrap_content"
+            android:layout_height="30dp"
+            android:text="⛶ Fit"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:gravity="center"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:background="@drawable/btn_player_control"
+            android:layout_marginStart="8dp"/>
+
+        <!-- Quality/Resolution button -->
         <TextView
             android:id="@+id/btnResolution"
             android:layout_width="wrap_content"
@@ -292,7 +309,7 @@
             android:background="@drawable/btn_player_control"
             android:layout_marginStart="8dp"/>
 
-        <!-- CC Subtitles -->
+        <!-- CC Subtitles button -->
         <TextView
             android:id="@+id/btnSubtitles"
             android:layout_width="wrap_content"
@@ -309,17 +326,19 @@
 
     </LinearLayout>
 
-    <!-- ═══ BOTTOM BAR (auto hides) ═══ -->
+    <!-- ═══ BOTTOM BAR (fades in/out) ═══ -->
     <LinearLayout
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
-        android:layout_height="56dp"
+        android:layout_height="52dp"
         android:layout_gravity="bottom"
         android:background="#CC000000"
         android:orientation="horizontal"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        android:visibility="invisible"
+        android:alpha="0">
 
         <!-- Play/Pause -->
         <TextView
@@ -327,19 +346,20 @@
             android:layout_width="40dp"
             android:layout_height="40dp"
             android:text="⏸"
-            android:textSize="22sp"
+            android:textSize="20sp"
             android:gravity="center"
             android:textColor="#FFFFFF"
             android:layout_marginEnd="16dp"/>
 
-        <!-- Channel/Movie title -->
+        <!-- Program info -->
         <TextView
+            android:id="@+id/tvProgramInfo"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:id="@+id/tvProgramInfo"
             android:textColor="#CCFFFFFF"
-            android:textSize="11sp"/>
+            android:textSize="11sp"
+            android:text=""/>
 
         <!-- Live badge -->
         <TextView
