@@ -66,7 +66,6 @@ class PlayerActivity : AppCompatActivity() {
     @Inject lateinit var playerHolder:    PlayerHolder
     @Inject lateinit var epgManager:      EpgManager
 
-    // Playlist
     private var urls         = arrayListOf<String>()
     private var titles       = arrayListOf<String>()
     private var contentIds   = arrayListOf<String>()
@@ -78,23 +77,20 @@ class PlayerActivity : AppCompatActivity() {
 
     private val currentContentId get() =
         if (contentIds.size > currentIndex) contentIds[currentIndex] else ""
-    private val currentStreamId get() =
+    private val currentStreamId  get() =
         if (streamIds.size > currentIndex) streamIds[currentIndex] else 0
 
-    // Touch
-    private var touchStartX   = 0f; private var touchStartY   = 0f
-    private var touchStartVol = 0;  private var touchStartBrt  = 0f
-    private var isSwiping     = false; private var swipeType   = ""
-    private var screenWidth   = 0;  private var screenHeight   = 0
+    private var touchStartX = 0f; private var touchStartY   = 0f
+    private var touchStartVol = 0; private var touchStartBrt = 0f
+    private var isSwiping = false; private var swipeType     = ""
+    private var screenWidth = 0;   private var screenHeight  = 0
     private var controlsVisible = false
     private var isUserSeeking   = false
 
-    // Playback speed
     private val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
     private val speedLabels  = listOf("0.5×", "0.75×", "1×", "1.25×", "1.5×", "1.75×", "2×")
-    private var currentSpeedIndex = 2  // default 1.0×
+    private var currentSpeedIndex = 2
 
-    // Aspect ratio
     private val aspectRatios = listOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT,
         AspectRatioFrameLayout.RESIZE_MODE_FILL,
@@ -110,12 +106,11 @@ class PlayerActivity : AppCompatActivity() {
     private val seekUpdateRunnable = object : Runnable {
         override fun run() {
             if (!isLive) updateSeekBar()
-            if (isLive)  updateEpgProgress()
+            else         updateEpgProgress()
             seekHandler.postDelayed(this, SEEK_UPDATE_INTERVAL)
         }
     }
 
-    // ─── onCreate ─────────────────────────────────────────────
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -135,7 +130,6 @@ class PlayerActivity : AppCompatActivity() {
         useExistingPlayer = intent.getBooleanExtra(EXTRA_USE_EXISTING, false)
         aspectIndex       = playerPrefs.getAspectRatioIndex()
 
-        // Build playlist
         val pUrls  = intent.getStringArrayListExtra(EXTRA_PLAYLIST)
         val pTitles = intent.getStringArrayListExtra(EXTRA_TITLES)
         val pIds   = intent.getStringArrayListExtra(EXTRA_IDS)
@@ -153,31 +147,22 @@ class PlayerActivity : AppCompatActivity() {
             urls = arrayListOf(u); titles = arrayListOf(t); contentIds = arrayListOf(id)
         }
 
-        // Hide all controls initially
         listOf(
             binding.topBar, binding.bottomBar, binding.centerControls,
             binding.leftBarContainer, binding.rightBarContainer
         ).forEach { it.alpha = 0f; it.visibility = View.INVISIBLE }
 
-        // EPG panel — live only, starts hidden
         binding.epgPanel.alpha      = 0f
         binding.epgPanel.visibility = if (isLive) View.INVISIBLE else View.GONE
 
-        // Seek bar — VOD only
         binding.seekBarSection.visibility = if (isLive) View.GONE else View.INVISIBLE
         binding.seekBarSection.alpha      = 0f
 
-        // CC + Speed — VOD only
         binding.btnSubtitles.visibility = if (isLive) View.GONE else View.VISIBLE
         binding.btnSpeed.visibility     = if (isLive) View.GONE else View.VISIBLE
-
-        // LIVE badge
-        binding.tvLiveBadge.visibility = if (isLive) View.VISIBLE else View.GONE
-
-        // PiP button — only if device supports it
-        binding.btnPip.visibility = if (supportsPip()) View.VISIBLE else View.GONE
+        binding.tvLiveBadge.visibility  = if (isLive) View.VISIBLE else View.GONE
+        binding.btnPip.visibility       = if (supportsPip()) View.VISIBLE else View.GONE
         binding.btnPip.setOnClickListener { enterPip() }
-
         binding.btnBack.setOnClickListener { finish() }
 
         updateVolumeUI()
@@ -203,21 +188,18 @@ class PlayerActivity : AppCompatActivity() {
     private fun enterPip() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
-                    .build()
-                enterPictureInPictureMode(params)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+                enterPictureInPictureMode(
+                    PictureInPictureParams.Builder()
+                        .setAspectRatio(Rational(16, 9))
+                        .build()
+                )
+            } catch (e: Exception) { e.printStackTrace() }
         }
     }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
-        if (player?.isPlaying == true && supportsPip()) {
-            enterPip()
-        }
+        if (player?.isPlaying == true && supportsPip()) enterPip()
     }
 
     override fun onPictureInPictureModeChanged(
@@ -225,15 +207,15 @@ class PlayerActivity : AppCompatActivity() {
         newConfig: android.content.res.Configuration
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        val uiVisibility = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
+        val vis = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
         listOf(
             binding.topBar, binding.bottomBar, binding.centerControls,
             binding.touchOverlay, binding.leftBarContainer, binding.rightBarContainer,
             binding.epgPanel, binding.seekBarSection
-        ).forEach { it.visibility = uiVisibility }
+        ).forEach { it.visibility = vis }
     }
 
-    // ─── Seamless live TV transfer ────────────────────────────
+    // ─── Seamless live transfer ────────────────────────────────
     private fun attachExistingPlayer() {
         player = playerHolder.player
         binding.playerView.player        = player
@@ -383,12 +365,12 @@ class PlayerActivity : AppCompatActivity() {
     // ─── EPG ──────────────────────────────────────────────────
     private fun loadEpg(streamId: Int) {
         if (!isLive || streamId <= 0) return
-        epgManager.fetchEpg(streamId) { epg ->
-            epg ?: return@fetchEpg
-            binding.tvEpgCurrent.text       = epg.currentShow
-            binding.tvEpgNext.text          = epg.nextShow
-            binding.tvEpgTime.text          = "${epg.startTime} – ${epg.endTime}"
-            binding.epgProgressBar.progress = epg.progressPercent
+        epgManager.fetchEpg(streamId) { epgInfo ->
+            epgInfo ?: return@fetchEpg
+            binding.tvEpgCurrent.text       = epgInfo.currentShow
+            binding.tvEpgNext.text          = epgInfo.nextShow
+            binding.tvEpgTime.text          = "${epgInfo.startTime} – ${epgInfo.endTime}"
+            binding.epgProgressBar.progress = epgInfo.progressPercent
             binding.epgPanel.tag            = "loaded"
             fadeIn(binding.epgPanel)
         }
@@ -401,12 +383,12 @@ class PlayerActivity : AppCompatActivity() {
         binding.epgProgressBar.progress = 0
     }
 
+    // ── Fixed: explicit variable name instead of implicit 'it' ──
     private fun updateEpgProgress() {
         val sId = currentStreamId
         if (sId <= 0) return
-        epgManager.getEpg(sId)?.let {
-            binding.epgProgressBar.progress = it.progressPercent
-        }
+        val epgInfo = epgManager.getEpg(sId) ?: return
+        binding.epgProgressBar.progress = epgInfo.progressPercent
     }
 
     // ─── Playback Speed ───────────────────────────────────────
@@ -501,8 +483,9 @@ class PlayerActivity : AppCompatActivity() {
                 val popup  = android.widget.PopupMenu(this, view)
                 popup.menu.add(0, -1, 0, "⛔ Off")
                 val textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-                if (textGroups.isEmpty()) popup.menu.add(0, 99, 0, "No subtitles available")
-                else {
+                if (textGroups.isEmpty()) {
+                    popup.menu.add(0, 99, 0, "No subtitles available")
+                } else {
                     var id = 0
                     textGroups.forEach { g ->
                         for (i in 0 until g.length)
@@ -588,7 +571,7 @@ class PlayerActivity : AppCompatActivity() {
         if (!isLive) fadeOut(binding.seekBarSection)
         binding.volumeIndicator.visibility     = View.GONE
         binding.brightnessIndicator.visibility = View.GONE
-        // EPG panel stays visible even when controls hide
+        // EPG panel stays visible after controls hide
     }
 
     private fun scheduleHide() {
