@@ -5,15 +5,24 @@ import androidx.lifecycle.viewModelScope
 import com.nitro.tvplayer.data.model.Category
 import com.nitro.tvplayer.data.model.VodStream
 import com.nitro.tvplayer.data.repository.ContentRepository
+import com.nitro.tvplayer.utils.FavouritesManager
+import com.nitro.tvplayer.utils.PlaybackPositionManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+const val MOVIE_CAT_ALL              = "__ALL__"
+const val MOVIE_CAT_FAVOURITES       = "__FAVOURITES__"
+const val MOVIE_CAT_CONTINUE         = "__CONTINUE__"
+const val MOVIE_CAT_RECENTLY_ADDED   = "__RECENT__"
+
 @HiltViewModel
 class MoviesViewModel @Inject constructor(
-    private val repo: ContentRepository
+    private val repo: ContentRepository,
+    private val favouritesManager: FavouritesManager,
+    private val positionManager: PlaybackPositionManager
 ) : ViewModel() {
 
     val categories       = MutableStateFlow<List<Category>>(emptyList())
@@ -38,16 +47,22 @@ class MoviesViewModel @Inject constructor(
                 val moviesDeferred = async { repo.getVodStreams() }
 
                 catsDeferred.await().onSuccess { catList ->
-                    // ── Auto-select first real category ──
+                    // Build special categories exactly like in screenshot
+                    val special = listOf(
+                        Category(MOVIE_CAT_ALL,            "All",               0),
+                        Category(MOVIE_CAT_FAVOURITES,     "Favourites",        0),
+                        Category(MOVIE_CAT_CONTINUE,       "Continue Watching", 0),
+                        Category(MOVIE_CAT_RECENTLY_ADDED, "Recently Added",    0)
+                    )
+                    categories.value = special + catList
+                    // Auto-select first real category
                     val firstReal = catList.firstOrNull()
-                    categories.value = catList
                     if (firstReal != null) selectedCategory.value = firstReal
                 }
 
                 moviesDeferred.await().onSuccess { list ->
                     allMovies.value = list
-                    // Show movies for first category
-                    val firstCatId = selectedCategory.value?.categoryId
+                    val firstCatId  = selectedCategory.value?.categoryId
                     movies.value = if (firstCatId != null) {
                         list.filter { it.categoryId == firstCatId }
                     } else list
@@ -66,7 +81,32 @@ class MoviesViewModel @Inject constructor(
 
     fun filterByCategory(category: Category) {
         selectedCategory.value = category
-        val filtered = allMovies.value.filter { it.categoryId == category.categoryId }
+        val filtered = when (category.categoryId) {
+            MOVIE_CAT_ALL -> allMovies.value
+
+            MOVIE_CAT_FAVOURITES -> {
+                val favIds = favouritesManager.getByType("movie").map { fav ->
+                    fav.id.removePrefix("movie_").toIntOrNull()
+                }
+                allMovies.value.filter { it.streamId in favIds }
+            }
+
+            MOVIE_CAT_CONTINUE -> {
+                // Show movies that have a saved resume position
+                allMovies.value.filter { movie ->
+                    positionManager.hasResumePoint("movie_${movie.streamId}")
+                }
+            }
+
+            MOVIE_CAT_RECENTLY_ADDED -> {
+                // Sort by "added" timestamp descending, take 30
+                allMovies.value
+                    .sortedByDescending { it.added?.toLongOrNull() ?: 0L }
+                    .take(30)
+            }
+
+            else -> allMovies.value.filter { it.categoryId == category.categoryId }
+        }
         movies.value = filtered
         if (filtered.isNotEmpty()) selectedMovie.value = filtered.first()
     }
@@ -74,13 +114,11 @@ class MoviesViewModel @Inject constructor(
     fun selectMovie(movie: VodStream) { selectedMovie.value = movie }
 
     fun search(query: String) {
-        movies.value = if (query.isEmpty()) {
-            val catId = selectedCategory.value?.categoryId
-            if (catId != null) allMovies.value.filter { it.categoryId == catId }
-            else allMovies.value
-        } else {
-            allMovies.value.filter { it.name.contains(query, ignoreCase = true) }
+        if (query.isEmpty()) {
+            filterByCategory(selectedCategory.value ?: return)
+            return
         }
+        movies.value = allMovies.value.filter { it.name.contains(query, ignoreCase = true) }
     }
 
     fun buildStreamUrl(streamId: Int, ext: String) = repo.buildVodUrl(streamId, ext)
