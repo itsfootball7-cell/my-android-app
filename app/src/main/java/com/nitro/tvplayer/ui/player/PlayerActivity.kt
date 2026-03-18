@@ -1,9 +1,16 @@
 package com.nitro.tvplayer.ui.player
 
 import android.annotation.SuppressLint
+import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.graphics.drawable.Icon
 import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
@@ -25,6 +32,7 @@ import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
+import com.nitro.tvplayer.R
 import com.nitro.tvplayer.databinding.ActivityPlayerBinding
 import com.nitro.tvplayer.utils.EpgManager
 import com.nitro.tvplayer.utils.PlaybackPositionManager
@@ -49,6 +57,10 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_USE_EXISTING = "use_existing_player"
         const val EXTRA_STREAM_IDS   = "extra_stream_ids"
 
+        // PiP broadcast actions
+        private const val ACTION_PIP_CLOSE      = "com.nitro.tvplayer.PIP_CLOSE"
+        private const val ACTION_PIP_FULLSCREEN  = "com.nitro.tvplayer.PIP_FULLSCREEN"
+
         private const val CONTROLS_HIDE_DELAY  = 4000L
         private const val SWIPE_THRESHOLD      = 8f
         private const val FADE_DURATION        = 300L
@@ -71,7 +83,6 @@ class PlayerActivity : AppCompatActivity() {
     private var titles       = arrayListOf<String>()
     private var contentIds   = arrayListOf<String>()
     private var streamIds    = arrayListOf<Int>()
-    private var streamIcons  = arrayListOf<String>()   // for EPG channel logo
     private var currentIndex = 0
     private var contentType  = "live"
     private val isLive       get() = contentType == "live"
@@ -81,15 +92,14 @@ class PlayerActivity : AppCompatActivity() {
         if (contentIds.size > currentIndex) contentIds[currentIndex] else ""
     private val currentStreamId  get() =
         if (streamIds.size > currentIndex) streamIds[currentIndex] else 0
-    private val currentStreamIcon get() =
-        if (streamIcons.size > currentIndex) streamIcons[currentIndex] else ""
 
-    private var touchStartX = 0f; private var touchStartY   = 0f
-    private var touchStartVol = 0; private var touchStartBrt = 0f
-    private var isSwiping = false; private var swipeType     = ""
-    private var screenWidth = 0;   private var screenHeight  = 0
+    private var touchStartX = 0f;  private var touchStartY   = 0f
+    private var touchStartVol = 0; private var touchStartBrt  = 0f
+    private var isSwiping = false; private var swipeType      = ""
+    private var screenWidth = 0;   private var screenHeight   = 0
     private var controlsVisible = false
     private var isUserSeeking   = false
+    private var isInPip         = false
 
     private val speedOptions = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
     private val speedLabels  = listOf("0.5×", "0.75×", "1×", "1.25×", "1.5×", "1.75×", "2×")
@@ -106,12 +116,37 @@ class PlayerActivity : AppCompatActivity() {
     private var aspectIndex  = 0
 
     private val hideControlsRunnable = Runnable { fadeOutAll() }
-
-    private val seekUpdateRunnable = object : Runnable {
+    private val seekUpdateRunnable   = object : Runnable {
         override fun run() {
             if (!isLive) updateSeekBar()
             else         updateEpgProgress()
             seekHandler.postDelayed(this, SEEK_UPDATE_INTERVAL)
+        }
+    }
+
+    // PiP broadcast receiver for Close / Fullscreen buttons
+    private val pipReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_PIP_CLOSE -> {
+                    // Close PiP → stop player and finish
+                    player?.stop()
+                    playerHolder.clear()
+                    finish()
+                }
+                ACTION_PIP_FULLSCREEN -> {
+                    // Exit PiP → go back to full screen
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        // This triggers onPictureInPictureModeChanged(false)
+                        moveTaskToBack(false)
+                        // Re-launch ourselves fully
+                        val i = Intent(this@PlayerActivity, PlayerActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                        }
+                        startActivity(i)
+                    }
+                }
+            }
         }
     }
 
@@ -151,11 +186,20 @@ class PlayerActivity : AppCompatActivity() {
             urls = arrayListOf(u); titles = arrayListOf(t); contentIds = arrayListOf(id)
         }
 
-        // All controls + EPG start hidden
+        // Register PiP broadcast receiver
+        val filter = IntentFilter().apply {
+            addAction(ACTION_PIP_CLOSE)
+            addAction(ACTION_PIP_FULLSCREEN)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(pipReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(pipReceiver, filter)
+        }
+
         listOf(
             binding.topBar, binding.bottomBar, binding.centerControls,
-            binding.leftBarContainer, binding.rightBarContainer,
-            binding.epgPanel                                        // EPG also fades with controls
+            binding.leftBarContainer, binding.rightBarContainer, binding.epgPanel
         ).forEach { it.alpha = 0f; it.visibility = View.INVISIBLE }
 
         binding.seekBarSection.visibility = if (isLive) View.GONE else View.INVISIBLE
@@ -167,13 +211,9 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnPip.setOnClickListener { enterPip() }
         binding.btnBack.setOnClickListener { finish() }
 
-        updateVolumeUI()
-        updateBrightnessUI(0.5f)
-        setupAspectButtons()
-        setupSpeedButton()
-        setupSeekBar()
-        setupTouchGestures()
-        updateSpeedLabel()
+        updateVolumeUI(); updateBrightnessUI(0.5f)
+        setupAspectButtons(); setupSpeedButton()
+        setupSeekBar(); setupTouchGestures(); updateSpeedLabel()
 
         if (useExistingPlayer && isLive && playerHolder.player != null) {
             attachExistingPlayer()
@@ -187,14 +227,41 @@ class PlayerActivity : AppCompatActivity() {
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
         packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
 
+    private fun buildPipParams(): PictureInPictureParams {
+        val params = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Close button
+            val closeIntent = PendingIntent.getBroadcast(
+                this, 0, Intent(ACTION_PIP_CLOSE),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val closeAction = RemoteAction(
+                Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel),
+                "Close", "Close PiP", closeIntent
+            )
+
+            // Fullscreen button
+            val fullIntent = PendingIntent.getBroadcast(
+                this, 1, Intent(ACTION_PIP_FULLSCREEN),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val fullAction = RemoteAction(
+                Icon.createWithResource(this, android.R.drawable.ic_menu_view),
+                "Fullscreen", "Go Fullscreen", fullIntent
+            )
+
+            params.setActions(listOf(closeAction, fullAction))
+        }
+
+        return params.build()
+    }
+
     private fun enterPip() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
-                enterPictureInPictureMode(
-                    PictureInPictureParams.Builder()
-                        .setAspectRatio(Rational(16, 9))
-                        .build()
-                )
+                enterPictureInPictureMode(buildPipParams())
             } catch (e: Exception) { e.printStackTrace() }
         }
     }
@@ -209,12 +276,20 @@ class PlayerActivity : AppCompatActivity() {
         newConfig: android.content.res.Configuration
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        isInPip = isInPictureInPictureMode
+
+        // Hide ALL UI in PiP — clean video only
         val vis = if (isInPictureInPictureMode) View.GONE else View.VISIBLE
         listOf(
             binding.topBar, binding.bottomBar, binding.centerControls,
             binding.touchOverlay, binding.leftBarContainer,
             binding.rightBarContainer, binding.epgPanel, binding.seekBarSection
         ).forEach { it.visibility = vis }
+
+        if (isInPictureInPictureMode) {
+            // Tell LiveTvFragment to go black — we are in PiP
+            playerHolder.isInFullscreen = true
+        }
     }
 
     // ─── Seamless live transfer ────────────────────────────────
@@ -268,8 +343,7 @@ class PlayerActivity : AppCompatActivity() {
 
         if (!isLive && currentContentId.isNotBlank() && player != null) {
             positionManager.savePosition(
-                currentContentId,
-                player!!.currentPosition,
+                currentContentId, player!!.currentPosition,
                 player!!.duration.takeIf { it > 0 } ?: 0L
             )
         }
@@ -297,8 +371,7 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         player!!.setMediaItem(MediaItem.fromUri(Uri.parse(urls[index])))
-        player!!.prepare()
-        player!!.playWhenReady = true
+        player!!.prepare(); player!!.playWhenReady = true
         syncPlayPauseBtn()
         if (isLive) loadEpg(currentStreamId)
 
@@ -356,23 +429,26 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnPlayPause.text = if (player?.isPlaying == true) "⏸" else "▶"
     }
 
-    // ─── EPG — fades with controls ────────────────────────────
+    // ─── EPG ──────────────────────────────────────────────────
     private fun loadEpg(streamId: Int) {
         if (!isLive || streamId <= 0) return
         epgManager.fetchEpg(streamId) { epgInfo ->
             epgInfo ?: return@fetchEpg
-            updateEpgPanel(epgInfo)
+            binding.tvEpgNow.text           = "Now: ${epgInfo.currentShow}"
+            binding.tvEpgTime.text          = "${epgInfo.startTime} – ${epgInfo.endTime}"
+            binding.tvEpgNext.text          = epgInfo.nextShow
+            binding.epgProgressBar.progress = epgInfo.progressPercent
+            // Load channel logo
+            val streamId2 = currentStreamId
+            if (streamId2 > 0) {
+                // Try to get icon from stream list in playerHolder
+                val icon = playerHolder.currentChannelIcon
+                if (!icon.isNullOrBlank()) binding.ivEpgChannelLogo.loadUrl(icon)
+            }
+            binding.epgPanel.tag = "loaded"
+            // Only fade in if not in PiP
+            if (!isInPip) fadeIn(binding.epgPanel)
         }
-    }
-
-    private fun updateEpgPanel(epgInfo: com.nitro.tvplayer.utils.EpgInfo) {
-        binding.tvEpgNow.text           = "Now: ${epgInfo.currentShow}"
-        binding.tvEpgTime.text          = "${epgInfo.startTime} – ${epgInfo.endTime}"
-        binding.tvEpgNext.text          = epgInfo.nextShow
-        binding.epgProgressBar.progress = epgInfo.progressPercent
-        // Load channel logo into EPG panel
-        val icon = currentStreamIcon
-        if (icon.isNotBlank()) binding.ivEpgChannelLogo.loadUrl(icon)
     }
 
     private fun clearEpgPanel() {
@@ -405,29 +481,25 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateSpeedLabel() {
-        binding.btnSpeed.text = "⏩ ${speedLabels[currentSpeedIndex]}"
-    }
+    private fun updateSpeedLabel() { binding.btnSpeed.text = "⏩ ${speedLabels[currentSpeedIndex]}" }
 
     // ─── Seek Bar ─────────────────────────────────────────────
     private fun setupSeekBar() {
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                isUserSeeking = true
-                handler.removeCallbacks(hideControlsRunnable)
+                isUserSeeking = true; handler.removeCallbacks(hideControlsRunnable)
             }
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
                 val dur = player?.duration ?: return; if (dur <= 0) return
                 val ms = (progress / 1000f * dur).toLong()
-                binding.tvCurrentTime.text   = formatTime(ms)
+                binding.tvCurrentTime.text = formatTime(ms)
                 binding.tvRemainingTime.text = "- ${formatTime(dur - ms)}"
             }
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 isUserSeeking = false
                 val dur = player?.duration ?: return; if (dur <= 0) return
-                player?.seekTo((seekBar!!.progress / 1000f * dur).toLong())
-                resetHideControls()
+                player?.seekTo((seekBar!!.progress / 1000f * dur).toLong()); resetHideControls()
             }
         })
     }
@@ -447,7 +519,7 @@ class PlayerActivity : AppCompatActivity() {
         return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
     }
 
-    // ─── Aspect Ratio ─────────────────────────────────────────
+    // ─── Aspect ───────────────────────────────────────────────
     private fun setupAspectButtons() {
         updateAspectLabel()
         val cycle = {
@@ -508,7 +580,7 @@ class PlayerActivity : AppCompatActivity() {
         val p = v.layoutParams; p.height = fillPx; v.layoutParams = p
     }
 
-    // ─── Fades — EPG now fades WITH controls ──────────────────
+    // ─── Fades — EPG fades WITH controls ──────────────────────
     private fun fadeIn(view: View) {
         if (view.visibility == View.VISIBLE && view.alpha == 1f) return
         view.visibility = View.VISIBLE
@@ -522,23 +594,19 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun fadeInAll() {
         controlsVisible = true
-        fadeIn(binding.topBar); fadeIn(binding.bottomBar)
-        fadeIn(binding.centerControls)
+        fadeIn(binding.topBar); fadeIn(binding.bottomBar); fadeIn(binding.centerControls)
         fadeIn(binding.leftBarContainer); fadeIn(binding.rightBarContainer)
         if (!isLive) fadeIn(binding.seekBarSection)
-        // EPG fades in with controls for live TV
         if (isLive && binding.epgPanel.tag == "loaded") fadeIn(binding.epgPanel)
     }
 
     private fun fadeOutAll() {
         controlsVisible = false
-        fadeOut(binding.topBar); fadeOut(binding.bottomBar)
-        fadeOut(binding.centerControls)
+        fadeOut(binding.topBar); fadeOut(binding.bottomBar); fadeOut(binding.centerControls)
         fadeOut(binding.leftBarContainer); fadeOut(binding.rightBarContainer)
         if (!isLive) fadeOut(binding.seekBarSection)
-        // EPG fades out with controls too
         if (isLive) fadeOut(binding.epgPanel)
-        binding.volumeIndicator.visibility     = View.GONE
+        binding.volumeIndicator.visibility = View.GONE
         binding.brightnessIndicator.visibility = View.GONE
     }
 
@@ -558,8 +626,7 @@ class PlayerActivity : AppCompatActivity() {
                     touchStartX = event.x; touchStartY = event.y
                     touchStartVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                     touchStartBrt = window.attributes.screenBrightness.takeIf { it >= 0 } ?: 0.5f
-                    isSwiping = false; swipeType = ""
-                    handler.removeCallbacks(hideControlsRunnable); true
+                    isSwiping = false; swipeType = ""; handler.removeCallbacks(hideControlsRunnable); true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dy = event.y - touchStartY
@@ -590,16 +657,8 @@ class PlayerActivity : AppCompatActivity() {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!isSwiping) {
-                        if (controlsVisible) fadeOutAll()
-                        else { fadeInAll(); scheduleHide() }
-                    } else {
-                        handler.postDelayed({
-                            binding.volumeIndicator.visibility = View.GONE
-                            binding.brightnessIndicator.visibility = View.GONE
-                            if (!controlsVisible) { fadeOut(binding.leftBarContainer); fadeOut(binding.rightBarContainer) }
-                        }, 1500)
-                    }
+                    if (!isSwiping) { if (controlsVisible) fadeOutAll() else { fadeInAll(); scheduleHide() } }
+                    else handler.postDelayed({ binding.volumeIndicator.visibility = View.GONE; binding.brightnessIndicator.visibility = View.GONE; if (!controlsVisible) { fadeOut(binding.leftBarContainer); fadeOut(binding.rightBarContainer) } }, 1500)
                     isSwiping = false; swipeType = ""; true
                 }
                 else -> false
@@ -626,7 +685,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (!useExistingPlayer && !isInPictureInPictureMode) player?.pause()
+        if (!useExistingPlayer && !isInPip) player?.pause()
         saveCurrentPosition()
     }
 
@@ -640,6 +699,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try { unregisterReceiver(pipReceiver) } catch (e: Exception) { }
         handler.removeCallbacksAndMessages(null)
         seekHandler.removeCallbacksAndMessages(null)
         saveCurrentPosition()
