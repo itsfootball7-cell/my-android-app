@@ -53,31 +53,84 @@ class LiveTvFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         setupAdapters()
-        attachPreviewPlayer()
+        attachOrResumePlayer()
         setupPreviewClickListener()
         observeViewModel()
         setupSearch()
     }
 
-    private fun attachPreviewPlayer() {
+    // ─── Player management ────────────────────────────────────
+
+    private fun attachOrResumePlayer() {
+        // Create player if needed
         if (playerHolder.player == null) {
             playerHolder.player = ExoPlayer.Builder(requireContext()).build()
         }
 
-        // Only attach view if NOT in PiP mode right now
-        if (!playerHolder.isInFullscreen) {
+        // Returning from fullscreen PlayerActivity
+        if (playerHolder.isInFullscreen && !playerHolder.isInPip) {
+            playerHolder.isInFullscreen = false
+        }
+
+        // Attach to preview view if not in PiP
+        if (!playerHolder.isInPip) {
             binding.previewPlayerView.player = playerHolder.player
         }
         binding.previewPlayerView.useController = false
 
-        // Returning from fullscreen (not PiP) — show preview again
-        if (playerHolder.isInFullscreen) {
-            playerHolder.isInFullscreen = false
-            if (playerHolder.currentUrl != null) {
-                binding.previewPlayerView.player = playerHolder.player
-                showPreviewPlaying()
-            }
+        // If a stream was already playing, show it
+        if (playerHolder.currentUrl != null && !playerHolder.isInPip) {
+            showPreviewPlaying()
+            playerHolder.player?.play()
         }
+    }
+
+    private fun playInPreview(url: String) {
+        // Don't touch player while PiP is active
+        if (playerHolder.isInPip) return
+
+        val holder = playerHolder
+        if (holder.currentUrl == url) {
+            if (binding.previewPlayerView.player == null) {
+                binding.previewPlayerView.player = holder.player
+            }
+            holder.player?.play()
+            showPreviewPlaying()
+            return
+        }
+
+        holder.currentUrl = url
+        holder.player?.apply {
+            setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+            prepare()
+            playWhenReady = true
+        }
+        if (binding.previewPlayerView.player == null) {
+            binding.previewPlayerView.player = holder.player
+        }
+        showPreviewPlaying()
+    }
+
+    private fun stopPreviewFully() {
+        // Fully stop audio + video — detach view and pause player
+        binding.previewPlayerView.player = null
+        playerHolder.player?.pause()
+        playerHolder.player?.stop()
+        // Reset preview UI
+        _binding?.let { b ->
+            b.previewPlayerView.gone()
+            b.ivChannelLogo.visible()
+            b.tvClickToWatch.gone()
+            b.tapHint.visible()
+        }
+    }
+
+    private fun showPreviewPlaying() {
+        val b = _binding ?: return
+        b.previewPlayerView.visible()
+        b.ivChannelLogo.gone()
+        b.tvClickToWatch.visible()
+        b.tapHint.gone()
     }
 
     private fun setupPreviewClickListener() {
@@ -88,10 +141,11 @@ class LiveTvFragment : Fragment() {
             val urls    = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
             val names   = ArrayList(streams.map { it.name })
             val sIds    = ArrayList(streams.map { it.streamId })
+            val iconsList = ArrayList(streams.map { it.streamIcon ?: "" })
 
             playerHolder.isInFullscreen = true
 
-            // Detach preview → goes BLACK, stream keeps running in PlayerActivity
+            // Detach view → goes BLACK while stream continues in PlayerActivity
             binding.previewPlayerView.player = null
 
             startActivity(
@@ -99,6 +153,7 @@ class LiveTvFragment : Fragment() {
                     putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
                     putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
                     putIntegerArrayListExtra(PlayerActivity.EXTRA_STREAM_IDS, sIds)
+                    putStringArrayListExtra(PlayerActivity.EXTRA_ICONS, iconsList)
                     putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
                     putExtra(PlayerActivity.EXTRA_TYPE, "live")
                     putExtra(PlayerActivity.EXTRA_USE_EXISTING, true)
@@ -112,40 +167,7 @@ class LiveTvFragment : Fragment() {
         }
     }
 
-    private fun playInPreview(url: String) {
-        val holder = playerHolder
-
-        // If PiP is currently active (isInFullscreen) — don't touch the player
-        if (holder.isInFullscreen) return
-
-        if (holder.currentUrl == url) {
-            if (binding.previewPlayerView.player == null) {
-                binding.previewPlayerView.player = holder.player
-            }
-            holder.player?.play()
-            showPreviewPlaying()
-            return
-        }
-
-        holder.currentUrl = url
-        holder.player?.apply {
-            setMediaItem(MediaItem.fromUri(android.net.Uri.parse(url)))
-            prepare()
-            playWhenReady = true
-        }
-        if (binding.previewPlayerView.player == null) {
-            binding.previewPlayerView.player = holder.player
-        }
-        showPreviewPlaying()
-    }
-
-    private fun showPreviewPlaying() {
-        val b = _binding ?: return
-        b.previewPlayerView.visible()
-        b.ivChannelLogo.gone()
-        b.tvClickToWatch.visible()
-        b.tapHint.gone()
-    }
+    // ─── Adapters ─────────────────────────────────────────────
 
     private fun setupAdapters() {
         categoryAdapter = CategoryAdapter { viewModel.filterByCategory(it) }
@@ -161,12 +183,14 @@ class LiveTvFragment : Fragment() {
                 playInPreview(viewModel.buildStreamUrl(stream.streamId))
             },
             onLongPress = { stream ->
-                val added = favouritesManager.toggle(FavouriteItem(
-                    id = "live_${stream.streamId}", name = stream.name,
-                    icon = stream.streamIcon, type = "live",
-                    streamUrl = viewModel.buildStreamUrl(stream.streamId),
-                    categoryId = stream.categoryId
-                ))
+                val added = favouritesManager.toggle(
+                    FavouriteItem(
+                        id = "live_${stream.streamId}", name = stream.name,
+                        icon = stream.streamIcon, type = "live",
+                        streamUrl = viewModel.buildStreamUrl(stream.streamId),
+                        categoryId = stream.categoryId
+                    )
+                )
                 Toast.makeText(requireContext(),
                     if (added) "⭐ \"${stream.name}\" added to Favourites"
                     else "\"${stream.name}\" removed from Favourites",
@@ -179,6 +203,8 @@ class LiveTvFragment : Fragment() {
         }
     }
 
+    // ─── Observe ──────────────────────────────────────────────
+
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -186,7 +212,6 @@ class LiveTvFragment : Fragment() {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
-                        // Select first real category (after All + Favourites = index 2)
                         if (cats.size > 2) categoryAdapter.setSelected(2)
                         else if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
                     }
@@ -216,6 +241,8 @@ class LiveTvFragment : Fragment() {
         }
     }
 
+    // ─── Search ───────────────────────────────────────────────
+
     private fun setupSearch() {
         binding.etSearch.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { viewModel.search(s.toString()) }
@@ -224,22 +251,32 @@ class LiveTvFragment : Fragment() {
         })
     }
 
-    // ── Tab becomes visible again → resume ──
+    // ─── Lifecycle ────────────────────────────────────────────
+
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
         if (hidden) {
-            // Switched to Movies/Series → PAUSE the black box
-            // PiP continues separately in PlayerActivity
-            if (!playerHolder.isInFullscreen) {
-                playerHolder.player?.pause()
-                // Black box goes black
-                binding.previewPlayerView.player = null
+            // Switching to Movies/Series tab
+            if (!playerHolder.isInPip) {
+                // FULLY stop video + audio — no background playback
+                stopPreviewFully()
             }
+            // If PiP is active → let it keep playing in the floating window
         } else {
-            // Switched BACK to Live TV → reattach and resume
-            if (!playerHolder.isInFullscreen && playerHolder.currentUrl != null) {
+            // Coming BACK to Live TV tab
+            if (!playerHolder.isInPip && playerHolder.currentUrl != null) {
+                // Rebuild player if needed
+                if (playerHolder.player == null) {
+                    playerHolder.player = ExoPlayer.Builder(requireContext()).build()
+                }
+                // Reattach and resume
                 binding.previewPlayerView.player = playerHolder.player
-                playerHolder.player?.play()
+                // Re-load the stream (it was stopped)
+                playerHolder.player?.apply {
+                    setMediaItem(MediaItem.fromUri(Uri.parse(playerHolder.currentUrl!!)))
+                    prepare()
+                    playWhenReady = true
+                }
                 showPreviewPlaying()
             }
         }
@@ -247,30 +284,39 @@ class LiveTvFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        if (!playerHolder.isInFullscreen && playerHolder.currentUrl != null) {
+        // Re-attach player if returning from fullscreen (not PiP)
+        if (!playerHolder.isInPip && playerHolder.currentUrl != null) {
+            if (playerHolder.player == null) {
+                playerHolder.player = ExoPlayer.Builder(requireContext()).build()
+            }
             if (binding.previewPlayerView.player == null) {
                 binding.previewPlayerView.player = playerHolder.player
             }
-            playerHolder.player?.play()
+            if (!playerHolder.isInFullscreen) {
+                playerHolder.player?.play()
+                showPreviewPlaying()
+            }
         }
     }
 
     override fun onPause() {
         super.onPause()
-        if (!playerHolder.isInFullscreen) {
+        // Only stop if NOT going to fullscreen or PiP
+        if (!playerHolder.isInFullscreen && !playerHolder.isInPip) {
             playerHolder.player?.pause()
         }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        binding.previewPlayerView.player = null
+        _binding?.previewPlayerView?.player = null
         _binding = null
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        if (!playerHolder.isInFullscreen) {
+        // Release player only if not in fullscreen/PiP
+        if (!playerHolder.isInFullscreen && !playerHolder.isInPip) {
             playerHolder.player?.release()
             playerHolder.clear()
         }
