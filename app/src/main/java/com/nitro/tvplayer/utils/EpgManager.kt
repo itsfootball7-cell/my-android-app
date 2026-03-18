@@ -1,5 +1,6 @@
 package com.nitro.tvplayer.utils
 
+import android.util.Base64
 import com.nitro.tvplayer.data.model.EpgListing
 import com.nitro.tvplayer.data.repository.ContentRepository
 import kotlinx.coroutines.CoroutineScope
@@ -27,15 +28,14 @@ class EpgManager @Inject constructor(
     private val cache = mutableMapOf<Int, EpgInfo>()
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    fun getEpg(streamId: Int): EpgInfo? = cache[streamId]
+    fun getEpgCached(streamId: Int): EpgInfo? = cache[streamId]
 
     fun fetchEpg(streamId: Int, onResult: (EpgInfo?) -> Unit) {
         cache[streamId]?.let { onResult(it); return }
         scope.launch {
             try {
                 repo.getEpg(streamId.toString()).onSuccess { response ->
-                    val listings = response.epgListings ?: return@onSuccess
-                    val info     = parseEpg(listings)
+                    val info = parseEpg(response.epgListings ?: emptyList())
                     if (info != null) cache[streamId] = info
                     withContext(Dispatchers.Main) { onResult(info) }
                 }.onFailure {
@@ -56,37 +56,36 @@ class EpgManager @Inject constructor(
         var next: EpgListing?    = null
 
         for (i in listings.indices) {
-            val listing = listings[i]
-            val start = listing.startTimestamp?.toLongOrNull() ?: continue
-            val stop  = listing.stopTimestamp?.toLongOrNull()  ?: continue
+            val l     = listings[i]
+            val start = l.startTimestamp?.toLongOrNull() ?: continue
+            val stop  = l.stopTimestamp?.toLongOrNull()  ?: continue
             if (now in start..stop) {
-                current = listing
+                current = l
                 next    = listings.getOrNull(i + 1)
                 break
             }
         }
-
         current ?: return null
 
         val startTs  = current.startTimestamp?.toLongOrNull() ?: 0L
         val stopTs   = current.stopTimestamp?.toLongOrNull()  ?: 0L
-        val duration = (stopTs - startTs).coerceAtLeast(1)
-        val elapsed  = (now - startTs).coerceAtLeast(0)
+        val duration = (stopTs - startTs).coerceAtLeast(1L)
+        val elapsed  = (now - startTs).coerceAtLeast(0L)
         val progress = ((elapsed * 100f) / duration).toInt().coerceIn(0, 100)
 
         return EpgInfo(
             currentShow     = decodeTitle(current.title),
-            nextShow        = if (next != null) "Next: ${decodeTitle(next.title)}" else "",
+            nextShow        = next?.let { decodeTitle(it.title) } ?: "",
             progressPercent = progress,
-            startTime       = timeFmt.format(Date(startTs * 1000)),
-            endTime         = timeFmt.format(Date(stopTs  * 1000))
+            startTime       = timeFmt.format(Date(startTs * 1000L)),
+            endTime         = timeFmt.format(Date(stopTs  * 1000L))
         )
     }
 
     private fun decodeTitle(title: String?): String {
-        if (title.isNullOrBlank()) return "Unknown"
+        if (title.isNullOrBlank()) return "No Info"
         return try {
-            String(android.util.Base64.decode(title, android.util.Base64.DEFAULT), Charsets.UTF_8)
+            String(Base64.decode(title, Base64.DEFAULT), Charsets.UTF_8).trim()
         } catch (e: Exception) { title }
     }
 
