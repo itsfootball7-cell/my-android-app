@@ -25,22 +25,22 @@ data class EpgInfo(
 class EpgManager @Inject constructor(
     private val repo: ContentRepository
 ) {
-    // In-memory cache: streamId → EpgInfo
     private val cache = mutableMapOf<Int, EpgInfo>()
     private val scope = CoroutineScope(Dispatchers.IO)
 
-    // ── Called by PlayerActivity to get cached EPG instantly ──
+    // ── Returns cached EPG instantly (called every 500ms) ──
     fun getEpg(streamId: Int): EpgInfo? = cache[streamId]
 
-    // ── Called to fetch EPG from API if not cached ──
+    // ── Fetches EPG from API if not cached ──
     fun fetchEpg(streamId: Int, onResult: (EpgInfo?) -> Unit) {
-        // Return from cache immediately if available
-        cache[streamId]?.let { onResult(it); return }
+        val cached = cache[streamId]
+        if (cached != null) { onResult(cached); return }
 
         scope.launch {
             try {
                 repo.getEpg(streamId.toString()).onSuccess { response ->
-                    val listings = response.epgListings ?: run {
+                    val listings = response.epgListings
+                    if (listings.isNullOrEmpty()) {
                         withContext(Dispatchers.Main) { onResult(null) }
                         return@onSuccess
                     }
@@ -85,7 +85,7 @@ class EpgManager @Inject constructor(
 
         return EpgInfo(
             currentShow     = decodeTitle(current.title),
-            nextShow        = next?.let { "Next: ${decodeTitle(it.title)}" } ?: "",
+            nextShow        = next?.let { "Next: ${decodeTitle(it.title)}" } ?: "Next: No Program Found",
             progressPercent = progress,
             startTime       = timeFmt.format(Date(startTs * 1000)),
             endTime         = timeFmt.format(Date(stopTs  * 1000))
@@ -93,12 +93,10 @@ class EpgManager @Inject constructor(
     }
 
     private fun decodeTitle(title: String?): String {
-        if (title.isNullOrBlank()) return "No info"
+        if (title.isNullOrBlank()) return "No Program Found"
         return try {
             String(Base64.decode(title, Base64.DEFAULT), Charsets.UTF_8).trim()
-        } catch (e: Exception) {
-            title
-        }
+        } catch (e: Exception) { title }
     }
 
     fun clearCache() = cache.clear()
