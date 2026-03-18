@@ -16,94 +16,59 @@
         android:paddingEnd="16dp"
         android:gravity="center_vertical">
 
-        <ImageView
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:src="@drawable/ic_launcher"
-            android:layout_marginEnd="8dp"/>
+        <ImageView android:layout_width="28dp" android:layout_height="28dp"
+            android:src="@drawable/ic_launcher" android:layout_marginEnd="8dp"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Nitro"
-            android:textColor="@color/white"
-            android:textSize="16sp"
-            android:textStyle="bold"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Nitro" android:textColor="@color/white"
+            android:textSize="16sp" android:textStyle="bold"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Tv"
-            android:textColor="@color/accent_orange"
-            android:textSize="13sp"
-            android:textStyle="bold"
-            android:layout_marginStart="2dp"/>
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="Tv" android:textColor="@color/accent_orange"
+            android:textSize="13sp" android:textStyle="bold" android:layout_marginStart="2dp"/>
 
         <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
 
-        <TextView
-            android:id="@+id/tabLive"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="📡  Live TV"
-            android:textColor="#80FFFFFF"
-            android:textSize="12sp"
-            android:gravity="center"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+        <TextView android:id="@+id/tabLive"
+            android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:text="📡  Live TV" android:textColor="#80FFFFFF" android:textSize="12sp"
+            android:gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp"
             android:background="@drawable/tab_selector"/>
 
-        <TextView
-            android:id="@+id/tabMovies"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="🎬  Movies"
-            android:textColor="#80FFFFFF"
-            android:textSize="12sp"
-            android:gravity="center"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+        <TextView android:id="@+id/tabMovies"
+            android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:text="🎬  Movies" android:textColor="#80FFFFFF" android:textSize="12sp"
+            android:gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp"
             android:background="@drawable/tab_selector"/>
 
-        <TextView
-            android:id="@+id/tabSeries"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="📺  Series"
-            android:textColor="#80FFFFFF"
-            android:textSize="12sp"
-            android:gravity="center"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+        <TextView android:id="@+id/tabSeries"
+            android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:text="📺  Series" android:textColor="#80FFFFFF" android:textSize="12sp"
+            android:gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp"
             android:background="@drawable/tab_selector"/>
 
-        <TextView
-            android:id="@+id/tabSettings"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:text="⚙️  Settings"
-            android:textColor="#80FFFFFF"
-            android:textSize="12sp"
-            android:gravity="center"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
+        <!-- Search tab -->
+        <TextView android:id="@+id/tabSearch"
+            android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:text="🔍  Search" android:textColor="#80FFFFFF" android:textSize="12sp"
+            android:gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp"
+            android:background="@drawable/tab_selector"/>
+
+        <TextView android:id="@+id/tabSettings"
+            android:layout_width="wrap_content" android:layout_height="match_parent"
+            android:text="⚙️  Settings" android:textColor="#80FFFFFF" android:textSize="12sp"
+            android:gravity="center" android:paddingStart="14dp" android:paddingEnd="14dp"
             android:background="@drawable/tab_selector"/>
 
         <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
 
-        <TextView
-            android:id="@+id/tvUsername"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/white"
-            android:textSize="12sp"
+        <TextView android:id="@+id/tvUsername"
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="@color/white" android:textSize="12sp"
             android:layout_marginEnd="8dp"/>
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="● Connected"
-            android:textColor="@color/accent_orange"
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="● Connected" android:textColor="@color/accent_orange"
             android:textSize="10sp"/>
 
     </LinearLayout>
