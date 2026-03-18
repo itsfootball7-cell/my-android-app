@@ -1,51 +1,272 @@
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:background="#000000">
-<!--  Video Player  -->
-<androidx.media3.ui.PlayerView android:id="@+id/playerView" android:layout_width="match_parent" android:layout_height="match_parent" android:keepScreenOn="true"/>
-<!--  Buffering Indicator  -->
-<ProgressBar android:id="@+id/progressBar" android:layout_width="52dp" android:layout_height="52dp" android:layout_gravity="center" android:visibility="gone" android:indeterminateTint="#FFB300"/>
-<!--  Error Text  -->
-<TextView android:id="@+id/tvError" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="center" android:textColor="#FFCF6679" android:textSize="13sp" android:visibility="gone" android:padding="12dp" android:background="#90000000"/>
-<!--  Nitro TV Watermark  -->
-<LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_gravity="top|start" android:layout_margin="14dp" android:orientation="horizontal" android:alpha="0.4">
-<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Nitro" android:textColor="#FFFFFF" android:textSize="12sp" android:textStyle="bold"/>
-<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Tv" android:textColor="#FFB300" android:textSize="10sp" android:textStyle="bold" android:layout_marginStart="2dp"/>
-</LinearLayout>
-<!--  TOP BAR  -->
-<LinearLayout android:id="@+id/topBar" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="top" android:background="#80000000" android:orientation="horizontal" android:padding="10dp" android:gravity="center_vertical">
-<!--  Back button  -->
-<ImageButton android:id="@+id/btnBack" android:layout_width="36dp" android:layout_height="36dp" android:src="@android:drawable/ic_menu_close_clear_cancel" android:background="@drawable/btn_circle" android:tint="#FFFFFF" android:contentDescription="Back" android:layout_marginEnd="12dp"/>
-<!--  Title  -->
-<TextView android:id="@+id/tvTitle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="#FFFFFF" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" android:ellipsize="end"/>
-<!--  Resolution button  -->
-<TextView android:id="@+id/btnResolution" android:layout_width="wrap_content" android:layout_height="32dp" android:text="⚙ Quality" android:textColor="#FFFFFF" android:textSize="11sp" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:background="@drawable/btn_player_control" android:layout_marginStart="8dp"/>
-<!--  Subtitles / CC button  -->
-<TextView android:id="@+id/btnSubtitles" android:layout_width="wrap_content" android:layout_height="32dp" android:text="CC" android:textColor="#FFFFFF" android:textSize="11sp" android:textStyle="bold" android:gravity="center" android:paddingStart="12dp" android:paddingEnd="12dp" android:background="@drawable/btn_player_control" android:layout_marginStart="8dp"/>
-</LinearLayout>
-<!--  SIDE CONTROLS — Volume (left) + Brightness (right)  -->
-<LinearLayout android:id="@+id/sideControls" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:gravity="center_vertical">
-<!--  LEFT: Volume  -->
-<LinearLayout android:layout_width="36dp" android:layout_height="200dp" android:orientation="vertical" android:gravity="center" android:layout_marginStart="16dp" android:background="#60000000" android:padding="6dp">
-<ImageView android:id="@+id/ivVolumeIcon" android:layout_width="18dp" android:layout_height="18dp" android:src="@android:drawable/ic_lock_silent_mode_off" android:tint="#FFB300" android:layout_marginBottom="6dp"/>
-<SeekBar android:id="@+id/seekVolume" android:layout_width="160dp" android:layout_height="wrap_content" android:rotation="270" android:progressTint="#FFB300" android:thumbTint="#FFB300" android:layout_marginTop="60dp" android:layout_marginBottom="60dp"/>
-<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="VOL" android:textColor="#99FFFFFF" android:textSize="8sp" android:layout_marginTop="6dp"/>
-</LinearLayout>
-<!--  CENTER: Play/Pause  -->
-<LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center">
-<ImageButton android:id="@+id/btnPlayPause" android:layout_width="56dp" android:layout_height="56dp" android:src="@android:drawable/ic_media_pause" android:background="@drawable/btn_play_circle" android:tint="#FFFFFF" android:contentDescription="Play Pause"/>
-</LinearLayout>
-<!--  RIGHT: Brightness  -->
-<LinearLayout android:layout_width="36dp" android:layout_height="200dp" android:orientation="vertical" android:gravity="center" android:layout_marginEnd="16dp" android:background="#60000000" android:padding="6dp">
-<ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@android:drawable/btn_star_big_on" android:tint="#FFB300" android:layout_marginBottom="6dp"/>
-<SeekBar android:id="@+id/seekBrightness" android:layout_width="160dp" android:layout_height="wrap_content" android:rotation="270" android:progressTint="#4FC3F7" android:thumbTint="#4FC3F7" android:layout_marginTop="60dp" android:layout_marginBottom="60dp"/>
-<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="BRT" android:textColor="#99FFFFFF" android:textSize="8sp" android:layout_marginTop="6dp"/>
-</LinearLayout>
-</LinearLayout>
-<!--  BOTTOM CONTROLS OVERLAY  -->
-<LinearLayout android:id="@+id/controlsOverlay" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_gravity="bottom" android:background="#80000000" android:orientation="vertical" android:padding="10dp">
-<!--  Live badge + program info  -->
-<LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="6dp">
-<TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="● LIVE" android:textColor="#FFFFFF" android:textSize="9sp" android:background="@drawable/badge_live" android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp" android:layout_marginEnd="10dp"/>
-<TextView android:id="@+id/tvProgramInfo" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="#CCFFFFFF" android:textSize="11sp"/>
-</LinearLayout>
-</LinearLayout>
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- Video Player -->
+    <androidx.media3.ui.PlayerView
+        android:id="@+id/playerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:keepScreenOn="true"/>
+
+    <!-- Buffering Indicator -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="52dp"
+        android:layout_height="52dp"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        android:indeterminateTint="#FFB300"/>
+
+    <!-- Error Text -->
+    <TextView
+        android:id="@+id/tvError"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:textColor="#FFCF6679"
+        android:textSize="13sp"
+        android:visibility="gone"
+        android:padding="12dp"
+        android:background="#90000000"/>
+
+    <!-- Nitro TV Watermark -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="14dp"
+        android:orientation="horizontal"
+        android:alpha="0.4">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Nitro"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold"/>
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tv"
+            android:textColor="#FFB300"
+            android:textSize="10sp"
+            android:textStyle="bold"
+            android:layout_marginStart="2dp"/>
+    </LinearLayout>
+
+    <!-- TOP BAR -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:background="#80000000"
+        android:orientation="horizontal"
+        android:padding="10dp"
+        android:gravity="center_vertical">
+
+        <!-- Back button -->
+        <ImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:background="@drawable/btn_circle"
+            android:tint="#FFFFFF"
+            android:contentDescription="Back"
+            android:layout_marginEnd="12dp"/>
+
+        <!-- Title -->
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"/>
+
+        <!-- Resolution button -->
+        <TextView
+            android:id="@+id/btnResolution"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="⚙ Quality"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:background="@drawable/btn_player_control"
+            android:layout_marginStart="8dp"/>
+
+        <!-- Subtitles / CC button -->
+        <TextView
+            android:id="@+id/btnSubtitles"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="CC"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:background="@drawable/btn_player_control"
+            android:layout_marginStart="8dp"/>
+
+    </LinearLayout>
+
+    <!-- SIDE CONTROLS — Volume (left) + Brightness (right) -->
+    <LinearLayout
+        android:id="@+id/sideControls"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- LEFT: Volume -->
+        <LinearLayout
+            android:layout_width="36dp"
+            android:layout_height="200dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginStart="16dp"
+            android:background="#60000000"
+            android:padding="6dp">
+
+            <ImageView
+                android:id="@+id/ivVolumeIcon"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@android:drawable/ic_lock_silent_mode_off"
+                android:tint="#FFB300"
+                android:layout_marginBottom="6dp"/>
+
+            <SeekBar
+                android:id="@+id/seekVolume"
+                android:layout_width="160dp"
+                android:layout_height="wrap_content"
+                android:rotation="270"
+                android:progressTint="#FFB300"
+                android:thumbTint="#FFB300"
+                android:layout_marginTop="60dp"
+                android:layout_marginBottom="60dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="VOL"
+                android:textColor="#99FFFFFF"
+                android:textSize="8sp"
+                android:layout_marginTop="6dp"/>
+
+        </LinearLayout>
+
+        <!-- CENTER: Play/Pause -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center">
+
+            <ImageButton
+                android:id="@+id/btnPlayPause"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@android:drawable/ic_media_pause"
+                android:background="@drawable/btn_play_circle"
+                android:tint="#FFFFFF"
+                android:contentDescription="Play Pause"/>
+
+        </LinearLayout>
+
+        <!-- RIGHT: Brightness -->
+        <LinearLayout
+            android:layout_width="36dp"
+            android:layout_height="200dp"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginEnd="16dp"
+            android:background="#60000000"
+            android:padding="6dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@android:drawable/btn_star_big_on"
+                android:tint="#FFB300"
+                android:layout_marginBottom="6dp"/>
+
+            <SeekBar
+                android:id="@+id/seekBrightness"
+                android:layout_width="160dp"
+                android:layout_height="wrap_content"
+                android:rotation="270"
+                android:progressTint="#4FC3F7"
+                android:thumbTint="#4FC3F7"
+                android:layout_marginTop="60dp"
+                android:layout_marginBottom="60dp"/>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="BRT"
+                android:textColor="#99FFFFFF"
+                android:textSize="8sp"
+                android:layout_marginTop="6dp"/>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- BOTTOM CONTROLS OVERLAY -->
+    <LinearLayout
+        android:id="@+id/controlsOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:background="#80000000"
+        android:orientation="vertical"
+        android:padding="10dp">
+
+        <!-- Live badge + program info -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="6dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="● LIVE"
+                android:textColor="#FFFFFF"
+                android:textSize="9sp"
+                android:background="@drawable/badge_live"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:layout_marginEnd="10dp"/>
+
+            <TextView
+                android:id="@+id/tvProgramInfo"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textColor="#CCFFFFFF"
+                android:textSize="11sp"/>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
 </FrameLayout>
