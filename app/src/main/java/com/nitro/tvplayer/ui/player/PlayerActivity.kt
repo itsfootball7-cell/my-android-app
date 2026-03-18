@@ -7,11 +7,9 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -22,6 +20,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import com.nitro.tvplayer.databinding.ActivityPlayerBinding
 import dagger.hilt.android.AndroidEntryPoint
+import kotlin.math.abs
 
 @AndroidEntryPoint
 class PlayerActivity : AppCompatActivity() {
@@ -31,6 +30,7 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_TYPE  = "extra_type"
         private const val CONTROLS_HIDE_DELAY = 4000L
+        private const val SWIPE_THRESHOLD = 10f
     }
 
     private lateinit var binding: ActivityPlayerBinding
@@ -38,10 +38,22 @@ class PlayerActivity : AppCompatActivity() {
     private lateinit var trackSelector: DefaultTrackSelector
     private lateinit var audioManager: AudioManager
     private val handler = Handler(Looper.getMainLooper())
-    private var controlsVisible = true
-    private lateinit var gestureDetector: GestureDetector
 
-    private val hideControlsRunnable = Runnable { hideControls() }
+    private var touchStartX = 0f
+    private var touchStartY = 0f
+    private var touchStartVolume = 0
+    private var touchStartBrightness = 0f
+    private var isSwiping = false
+    private var swipeType = ""
+    private var screenWidth = 0
+    private var screenHeight = 0
+    private var controlsVisible = true
+
+    private val hideControlsRunnable = Runnable {
+        binding.topBar.visibility = View.GONE
+        binding.bottomBar.visibility = View.GONE
+        controlsVisible = false
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,31 +68,28 @@ class PlayerActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        screenWidth  = resources.displayMetrics.widthPixels
+        screenHeight = resources.displayMetrics.heightPixels
 
         val url   = intent.getStringExtra(EXTRA_URL) ?: return
         val title = intent.getStringExtra(EXTRA_TITLE) ?: ""
         binding.tvTitle.text = title
         binding.btnBack.setOnClickListener { finish() }
 
-        setupVolumeBar()
-        setupBrightnessBar()
-        setupGestures()
+        updateVolumeUI()
+        updateBrightnessUI(0.5f)
+        setupTouchGestures()
         initPlayer(url)
         scheduleHideControls()
     }
 
-    // ─── Player ───────────────────────────────────────────────
     private fun initPlayer(url: String) {
         binding.progressBar.visibility = View.VISIBLE
         trackSelector = DefaultTrackSelector(this)
-        player = ExoPlayer.Builder(this)
-            .setTrackSelector(trackSelector)
-            .build()
-
+        player = ExoPlayer.Builder(this).setTrackSelector(trackSelector).build()
         binding.playerView.player = player
         binding.playerView.useController = false
         binding.playerView.keepScreenOn = true
-
         player!!.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
         player!!.prepare()
         player!!.playWhenReady = true
@@ -96,19 +105,12 @@ class PlayerActivity : AppCompatActivity() {
                         setupSubtitleButton()
                     }
                     Player.STATE_ENDED -> finish()
-                    Player.STATE_IDLE -> binding.progressBar.visibility = View.GONE
+                    Player.STATE_IDLE  -> binding.progressBar.visibility = View.GONE
                 }
             }
-
             override fun onPlayerError(error: PlaybackException) {
                 binding.progressBar.visibility = View.GONE
-                binding.tvError.text = when {
-                    error.message?.contains("404") == true -> "Stream not found (404)"
-                    error.message?.contains("403") == true -> "Access denied (403)"
-                    error.message?.contains("cleartext") == true -> "HTTP blocked by device"
-                    error.message?.contains("timeout") == true -> "Connection timed out"
-                    else -> "Playback error: ${error.message}"
-                }
+                binding.tvError.text = "Playback error: ${error.message}"
                 binding.tvError.visibility = View.VISIBLE
             }
         })
@@ -116,12 +118,130 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnPlayPause.setOnClickListener {
             if (player?.isPlaying == true) {
                 player?.pause()
-                binding.btnPlayPause.setImageResource(android.R.drawable.ic_media_play)
+                binding.btnPlayPause.text = "▶"
             } else {
                 player?.play()
-                binding.btnPlayPause.setImageResource(android.R.drawable.ic_media_pause)
+                binding.btnPlayPause.text = "⏸"
             }
             resetHideControls()
+        }
+    }
+
+    // ─── Visual Bar Updates ───────────────────────────────────
+    private fun updateVolumeUI() {
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val pct = if (max > 0) (cur * 100f / max).toInt() else 0
+        binding.tvVolumeValue.text = "$pct%"
+        binding.tvVolumeIndicator.text = "🔊 $pct%"
+        binding.volumeBar.progress = pct
+        updateFillBar(binding.rightVolumeBarFill, pct)
+    }
+
+    private fun updateBrightnessUI(brightness: Float) {
+        val pct = (brightness * 100).toInt().coerceIn(0, 100)
+        binding.tvBrightnessValue.text = "$pct%"
+        binding.tvBrightnessIndicator.text = "☀ $pct%"
+        binding.brightnessBar.progress = pct
+        updateFillBar(binding.leftBrightnessBarFill, pct)
+    }
+
+    private fun updateFillBar(fillView: View, pct: Int) {
+        val density = resources.displayMetrics.density
+        val maxHeightDp = 150
+        val maxHeightPx = (maxHeightDp * density).toInt()
+        val fillHeightPx = (maxHeightPx * pct / 100f).toInt().coerceAtLeast(4)
+        val params = fillView.layoutParams
+        params.height = fillHeightPx
+        fillView.layoutParams = params
+    }
+
+    // ─── Touch & Swipe Gestures ───────────────────────────────
+    @SuppressLint("ClickableViewAccessibility")
+    private fun setupTouchGestures() {
+        binding.touchOverlay.setOnTouchListener { _, event ->
+            when (event.action) {
+
+                MotionEvent.ACTION_DOWN -> {
+                    touchStartX = event.x
+                    touchStartY = event.y
+                    touchStartVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                    touchStartBrightness = window.attributes.screenBrightness
+                        .takeIf { it >= 0 } ?: 0.5f
+                    isSwiping = false
+                    swipeType = ""
+                    handler.removeCallbacks(hideControlsRunnable)
+                    true
+                }
+
+                MotionEvent.ACTION_MOVE -> {
+                    val dy = event.y - touchStartY
+
+                    if (!isSwiping && abs(dy) > SWIPE_THRESHOLD) {
+                        isSwiping = true
+                        swipeType = if (touchStartX < screenWidth / 2) "brightness" else "volume"
+                        when (swipeType) {
+                            "volume"     -> {
+                                binding.volumeIndicator.visibility = View.VISIBLE
+                                binding.brightnessIndicator.visibility = View.GONE
+                            }
+                            "brightness" -> {
+                                binding.brightnessIndicator.visibility = View.VISIBLE
+                                binding.volumeIndicator.visibility = View.GONE
+                            }
+                        }
+                    }
+
+                    if (isSwiping) {
+                        val delta = -(dy / screenHeight.toFloat())
+                        when (swipeType) {
+                            "volume" -> {
+                                val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                                val newVol = (touchStartVolume + (delta * max))
+                                    .toInt().coerceIn(0, max)
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+                                updateVolumeUI()
+                            }
+                            "brightness" -> {
+                                val newBrightness = (touchStartBrightness + delta)
+                                    .coerceIn(0.01f, 1.0f)
+                                val lp = window.attributes
+                                lp.screenBrightness = newBrightness
+                                window.attributes = lp
+                                updateBrightnessUI(newBrightness)
+                            }
+                        }
+                    }
+                    true
+                }
+
+                MotionEvent.ACTION_UP -> {
+                    if (!isSwiping) {
+                        // Simple tap — toggle top/bottom controls
+                        if (controlsVisible) {
+                            binding.topBar.visibility = View.GONE
+                            binding.bottomBar.visibility = View.GONE
+                            controlsVisible = false
+                        } else {
+                            binding.topBar.visibility = View.VISIBLE
+                            binding.bottomBar.visibility = View.VISIBLE
+                            controlsVisible = true
+                            scheduleHideControls()
+                        }
+                    } else {
+                        // Hide popup indicators after 1.2s
+                        handler.postDelayed({
+                            binding.volumeIndicator.visibility = View.GONE
+                            binding.brightnessIndicator.visibility = View.GONE
+                        }, 1200)
+                    }
+                    isSwiping = false
+                    swipeType = ""
+                    true
+                }
+
+                else -> false
+            }
         }
     }
 
@@ -141,38 +261,29 @@ class PlayerActivity : AppCompatActivity() {
                         popup.menu.add(0, itemId++, 0, "📺 $label")
                     }
                 }
-                if (videoGroups.isEmpty()) {
-                    popup.menu.add(0, 99, 0, "📺 Default")
-                }
+                if (videoGroups.isEmpty()) popup.menu.add(0, 99, 0, "📺 Default")
                 popup.setOnMenuItemClickListener { item ->
                     try {
                         if (item.itemId == -1) {
                             trackSelector.parameters = trackSelector.buildUponParameters()
-                                .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                                .build()
+                                .clearOverridesOfType(C.TRACK_TYPE_VIDEO).build()
                         } else {
                             var count = 0
                             videoGroups.forEach { group ->
                                 for (i in 0 until group.length) {
                                     if (count == item.itemId) {
                                         trackSelector.parameters = trackSelector.buildUponParameters()
-                                            .addOverride(TrackSelectionOverride(group.mediaTrackGroup, i))
-                                            .build()
+                                            .addOverride(TrackSelectionOverride(group.mediaTrackGroup, i)).build()
                                     }
                                     count++
                                 }
                             }
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                    resetHideControls()
-                    true
+                    } catch (e: Exception) { e.printStackTrace() }
+                    resetHideControls(); true
                 }
                 popup.show()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { e.printStackTrace() }
             resetHideControls()
         }
     }
@@ -192,8 +303,7 @@ class PlayerActivity : AppCompatActivity() {
                     textGroups.forEach { group ->
                         for (i in 0 until group.length) {
                             val format = group.getTrackFormat(i)
-                            val lang = format.language ?: "Track ${itemId + 1}"
-                            popup.menu.add(0, itemId++, 0, "💬 $lang")
+                            popup.menu.add(0, itemId++, 0, "💬 ${format.language ?: "Track"}")
                         }
                     }
                 }
@@ -202,158 +312,43 @@ class PlayerActivity : AppCompatActivity() {
                         if (item.itemId == -1) {
                             trackSelector.parameters = trackSelector.buildUponParameters()
                                 .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                                .setPreferredTextLanguage(null)
-                                .build()
-                            binding.btnSubtitles.alpha = 0.5f
+                                .setPreferredTextLanguage(null).build()
                         } else {
                             var count = 0
                             textGroups.forEach { group ->
                                 for (i in 0 until group.length) {
                                     if (count == item.itemId) {
                                         trackSelector.parameters = trackSelector.buildUponParameters()
-                                            .addOverride(TrackSelectionOverride(group.mediaTrackGroup, i))
-                                            .build()
-                                        binding.btnSubtitles.alpha = 1.0f
+                                            .addOverride(TrackSelectionOverride(group.mediaTrackGroup, i)).build()
                                     }
                                     count++
                                 }
                             }
                         }
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                    }
-                    resetHideControls()
-                    true
+                    } catch (e: Exception) { e.printStackTrace() }
+                    resetHideControls(); true
                 }
                 popup.show()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) { e.printStackTrace() }
             resetHideControls()
         }
     }
 
-    // ─── Volume Bar ───────────────────────────────────────────
-    private fun setupVolumeBar() {
-        val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        val currentVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-        binding.seekVolume.max = maxVolume
-        binding.seekVolume.progress = currentVolume
-        updateVolumeLabel(currentVolume, maxVolume)
-
-        binding.seekVolume.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, progress, 0)
-                    updateVolumeLabel(progress, maxVolume)
-                }
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                handler.removeCallbacks(hideControlsRunnable)
-            }
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                scheduleHideControls()
-            }
-        })
-    }
-
-    private fun updateVolumeLabel(volume: Int, max: Int) {
-        val pct = (volume * 100f / max).toInt()
-        binding.tvVolumeLabel.text = "🔊 $pct%"
-    }
-
-    // ─── Brightness Bar ───────────────────────────────────────
-    private fun setupBrightnessBar() {
-        // Use window brightness only — no system permission needed
-        val currentBrightness = window.attributes.screenBrightness
-        val progress = if (currentBrightness < 0) 128 else (currentBrightness * 255).toInt()
-        binding.seekBrightness.max = 255
-        binding.seekBrightness.progress = progress
-        updateBrightnessLabel(progress)
-
-        binding.seekBrightness.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) {
-                    // Only change window brightness — no permission required
-                    val lp = window.attributes
-                    lp.screenBrightness = (progress / 255f).coerceIn(0.01f, 1.0f)
-                    window.attributes = lp
-                    updateBrightnessLabel(progress)
-                }
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {
-                handler.removeCallbacks(hideControlsRunnable)
-            }
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {
-                scheduleHideControls()
-            }
-        })
-    }
-
-    private fun updateBrightnessLabel(progress: Int) {
-        val pct = (progress * 100f / 255).toInt()
-        binding.tvBrightnessLabel.text = "☀ $pct%"
-    }
-
-    // ─── Gesture (tap to show/hide controls) ──────────────────
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupGestures() {
-        gestureDetector = GestureDetector(this,
-            object : GestureDetector.SimpleOnGestureListener() {
-                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-                    toggleControls()
-                    return true
-                }
-            })
-        binding.playerView.setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-            false
-        }
-    }
-
-    // ─── Controls Show / Hide ─────────────────────────────────
-    private fun toggleControls() {
-        if (controlsVisible) hideControls() else showControls()
-    }
-
-    private fun showControls() {
-        controlsVisible = true
-        binding.topBar.visibility = View.VISIBLE
-        binding.controlsOverlay.visibility = View.VISIBLE
-        binding.leftPanel.visibility = View.VISIBLE
-        binding.rightPanel.visibility = View.VISIBLE
-        resetHideControls()
-    }
-
-    private fun hideControls() {
-        controlsVisible = false
-        binding.topBar.visibility = View.GONE
-        binding.controlsOverlay.visibility = View.GONE
-        binding.leftPanel.visibility = View.GONE
-        binding.rightPanel.visibility = View.GONE
-    }
-
+    // ─── Controls ─────────────────────────────────────────────
     private fun scheduleHideControls() {
         handler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY)
     }
 
     private fun resetHideControls() {
         handler.removeCallbacks(hideControlsRunnable)
-        showControls()
+        binding.topBar.visibility = View.VISIBLE
+        binding.bottomBar.visibility = View.VISIBLE
+        controlsVisible = true
         scheduleHideControls()
     }
 
-    // ─── Lifecycle ────────────────────────────────────────────
-    override fun onPause() {
-        super.onPause()
-        player?.pause()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        player?.play()
-    }
-
+    override fun onPause()   { super.onPause();  player?.pause() }
+    override fun onResume()  { super.onResume(); player?.play()  }
     override fun onDestroy() {
         super.onDestroy()
         handler.removeCallbacksAndMessages(null)
