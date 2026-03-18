@@ -60,16 +60,18 @@ class SeriesViewModel @Inject constructor(
                         Category(SERIES_CAT_RECENTLY_ADDED, "Recently Added",    0)
                     )
                     categories.value = special + catList
+                    // ── Auto-select FIRST REAL category ──
                     val firstReal = catList.firstOrNull()
                     if (firstReal != null) selectedCategory.value = firstReal
                 }
 
                 seriesDeferred.await().onSuccess { list ->
                     allSeries.value = list
-                    val firstCatId  = selectedCategory.value?.categoryId
-                    seriesList.value = if (firstCatId != null) {
+                    val firstCatId = selectedCategory.value?.categoryId
+                    seriesList.value = if (firstCatId != null)
                         list.filter { it.categoryId == firstCatId }
-                    } else list
+                    else list
+                    // Load first series info silently
                     if (seriesList.value.isNotEmpty()) {
                         loadSeriesInfo(seriesList.value.first(), silent = true)
                     }
@@ -91,16 +93,13 @@ class SeriesViewModel @Inject constructor(
             SERIES_CAT_ALL -> allSeries.value
 
             SERIES_CAT_FAVOURITES -> {
-                val favIds = favouritesManager.getByType("series").map { fav ->
-                    fav.id.removePrefix("series_").toIntOrNull()
-                }
+                val favIds = favouritesManager.getByType("series")
+                    .mapNotNull { it.id.removePrefix("series_").toIntOrNull() }
                 allSeries.value.filter { it.seriesId in favIds }
             }
 
             SERIES_CAT_CONTINUE -> {
-                // Show series that have any episode with a resume point
                 allSeries.value.filter { series ->
-                    // Check if any episode of this series has been watched
                     positionManager.hasResumePoint("series_${series.seriesId}")
                 }
             }
@@ -126,22 +125,31 @@ class SeriesViewModel @Inject constructor(
         viewModelScope.launch {
             selectedSeries.value = series
             if (!silent) loading.value = true
+
             if (series.seriesId in seriesInfoLoaded) {
                 loading.value = false
                 return@launch
             }
+
             try {
                 repo.getSeriesInfo(series.seriesId.toString()).onSuccess { info ->
                     val eps  = info.episodes ?: emptyMap()
-                    allEpisodes.value = eps
+                    allEpisodes.value    = eps
                     val keys = eps.keys.sortedBy { it.toIntOrNull() ?: 0 }
                     seasons.value        = keys
                     selectedSeason.value = keys.firstOrNull() ?: "1"
                     episodes.value       = eps[selectedSeason.value] ?: emptyList()
                     seriesInfoLoaded.add(series.seriesId)
+                }.onFailure { e ->
+                    // Don't crash — just clear episodes gracefully
+                    seasons.value  = emptyList()
+                    episodes.value = emptyList()
+                    if (!silent) error.value = "Could not load episodes: ${e.message}"
                 }
             } catch (e: Exception) {
-                if (!silent) error.value = e.message
+                seasons.value  = emptyList()
+                episodes.value = emptyList()
+                if (!silent) error.value = "Could not load episodes: ${e.message}"
             } finally {
                 loading.value = false
             }
