@@ -15,7 +15,6 @@ import com.nitro.tvplayer.databinding.FragmentLiveTvBinding
 import com.nitro.tvplayer.ui.player.PlayerActivity
 import com.nitro.tvplayer.utils.loadUrl
 import com.nitro.tvplayer.utils.visible
-import com.nitro.tvplayer.utils.gone
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
@@ -44,36 +43,30 @@ class LiveTvFragment : Fragment() {
     }
 
     private fun setupAdapters() {
-        categoryAdapter = CategoryAdapter { category ->
-            viewModel.filterByCategory(category.categoryId)
-        }
+        categoryAdapter = CategoryAdapter { viewModel.filterByCategory(it.categoryId) }
         binding.rvCategories.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = categoryAdapter
         }
 
-        streamAdapter = LiveStreamAdapter { stream ->
-            viewModel.selectStream(stream)
-        }
+        streamAdapter = LiveStreamAdapter { viewModel.selectStream(it) }
         binding.rvStreams.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = streamAdapter
         }
 
         binding.btnPlay.setOnClickListener {
-            val streams = viewModel.streams.value
+            val streams  = viewModel.streams.value
             val selected = viewModel.selectedStream.value ?: return@setOnClickListener
-            val selectedIndex = streams.indexOfFirst { it.streamId == selected.streamId }
-
-            // Build full playlist so Prev/Next works
-            val urls = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
-            val titles = ArrayList(streams.map { it.name })
+            val index    = streams.indexOfFirst { it.streamId == selected.streamId }
+            val urls     = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
+            val names    = ArrayList(streams.map { it.name })
 
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
                     putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
-                    putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, titles)
-                    putExtra(PlayerActivity.EXTRA_START_INDEX, selectedIndex.coerceAtLeast(0))
+                    putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
+                    putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
                     putExtra(PlayerActivity.EXTRA_TYPE, "live")
                 }
             )
@@ -82,14 +75,10 @@ class LiveTvFragment : Fragment() {
 
     private fun observeViewModel() {
         lifecycleScope.launch {
-            viewModel.categories.collect { cats ->
-                categoryAdapter.submitList(cats)
-            }
+            viewModel.categories.collect { categoryAdapter.submitList(it) }
         }
         lifecycleScope.launch {
-            viewModel.streams.collect { streams ->
-                streamAdapter.submitList(streams)
-            }
+            viewModel.streams.collect { streamAdapter.submitList(it) }
         }
         lifecycleScope.launch {
             viewModel.selectedStream.collect { stream ->
@@ -101,8 +90,8 @@ class LiveTvFragment : Fragment() {
             }
         }
         lifecycleScope.launch {
-            viewModel.loading.collect { loading ->
-                binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
+            viewModel.loading.collect {
+                binding.progressBar.visibility = if (it) View.VISIBLE else View.GONE
             }
         }
         lifecycleScope.launch {
