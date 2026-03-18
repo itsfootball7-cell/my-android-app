@@ -5,14 +5,14 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- ═══ VIDEO ═══ -->
+    <!-- Video Player -->
     <androidx.media3.ui.PlayerView
         android:id="@+id/playerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:keepScreenOn="true"/>
 
-    <!-- Full-screen gesture overlay -->
+    <!-- Full-screen gesture overlay (sits above video, below controls) -->
     <View
         android:id="@+id/touchOverlay"
         android:layout_width="match_parent"
@@ -42,7 +42,7 @@
         android:padding="12dp"
         android:background="#90000000"/>
 
-    <!-- Nitro watermark top-left -->
+    <!-- Nitro watermark -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -67,7 +67,7 @@
             android:layout_marginStart="2dp"/>
     </LinearLayout>
 
-    <!-- ═══ LEFT BAR: Brightness (fades) ═══ -->
+    <!-- ═══ LEFT BAR: Brightness ═══ -->
     <LinearLayout
         android:id="@+id/leftBarContainer"
         android:layout_width="32dp"
@@ -118,10 +118,9 @@
             android:textColor="#CCFFFFFF"
             android:textSize="8sp"
             android:layout_marginTop="4dp"/>
-
     </LinearLayout>
 
-    <!-- ═══ RIGHT BAR: Volume (fades) ═══ -->
+    <!-- ═══ RIGHT BAR: Volume ═══ -->
     <LinearLayout
         android:id="@+id/rightBarContainer"
         android:layout_width="32dp"
@@ -171,7 +170,6 @@
             android:textColor="#CCFFFFFF"
             android:textSize="8sp"
             android:layout_marginTop="4dp"/>
-
     </LinearLayout>
 
     <!-- ═══ SWIPE INDICATORS ═══ -->
@@ -235,7 +233,7 @@
             android:layout_marginTop="6dp"/>
     </LinearLayout>
 
-    <!-- ═══ TOP BAR: Back | Title | Aspect | [CC only for VOD] ═══ -->
+    <!-- ═══ TOP BAR ═══ -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -249,7 +247,6 @@
         android:visibility="invisible"
         android:alpha="0">
 
-        <!-- Back -->
         <ImageButton
             android:id="@+id/btnBack"
             android:layout_width="36dp"
@@ -260,7 +257,6 @@
             android:contentDescription="Back"
             android:layout_marginEnd="10dp"/>
 
-        <!-- Title -->
         <TextView
             android:id="@+id/tvTitle"
             android:layout_width="0dp"
@@ -272,7 +268,7 @@
             android:maxLines="1"
             android:ellipsize="end"/>
 
-        <!-- Aspect Ratio — always visible -->
+        <!-- Aspect Ratio top -->
         <TextView
             android:id="@+id/btnAspectRatio"
             android:layout_width="wrap_content"
@@ -286,7 +282,7 @@
             android:background="@drawable/btn_player_control"
             android:layout_marginStart="8dp"/>
 
-        <!-- CC — only shown for movies/series, hidden for live -->
+        <!-- CC — hidden for live, shown for VOD -->
         <TextView
             android:id="@+id/btnSubtitles"
             android:layout_width="wrap_content"
@@ -315,7 +311,6 @@
         android:visibility="invisible"
         android:alpha="0">
 
-        <!-- Previous -->
         <TextView
             android:id="@+id/btnPrev"
             android:layout_width="52dp"
@@ -327,7 +322,6 @@
             android:alpha="0.85"
             android:layout_marginEnd="32dp"/>
 
-        <!-- Play / Pause -->
         <TextView
             android:id="@+id/btnPlayPause"
             android:layout_width="64dp"
@@ -338,7 +332,6 @@
             android:textColor="#FFFFFF"
             android:background="@drawable/btn_play_circle"/>
 
-        <!-- Next -->
         <TextView
             android:id="@+id/btnNext"
             android:layout_width="52dp"
@@ -352,7 +345,73 @@
 
     </LinearLayout>
 
-    <!-- ═══ BOTTOM BAR: Channel Info | Aspect | [Live badge] ═══ -->
+    <!-- ═══ SEEK BAR SECTION (Movies & Series only) ═══
+         Positioned just ABOVE the bottom bar, exactly like screenshot:
+         [0:01]  ━━━●━━━━━━━━━━━━━━━  [- 0:11]
+    ═══════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/seekBarSection"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginBottom="52dp"
+        android:orientation="vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="4dp"
+        android:background="#99000000"
+        android:visibility="invisible"
+        android:alpha="0">
+
+        <!-- Time row: current | spacer | remaining -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginBottom="2dp">
+
+            <TextView
+                android:id="@+id/tvCurrentTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="0:00"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold"/>
+
+            <Space
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1"/>
+
+            <TextView
+                android:id="@+id/tvRemainingTime"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="- 0:00"
+                android:textColor="#FFFFFF"
+                android:textSize="13sp"
+                android:textStyle="bold"/>
+
+        </LinearLayout>
+
+        <!-- Orange seek bar — full width, scrubbable -->
+        <SeekBar
+            android:id="@+id/seekBar"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="1000"
+            android:progress="0"
+            android:progressTint="#FFB300"
+            android:progressBackgroundTint="#40FFFFFF"
+            android:thumbTint="#FFB300"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
+            android:layout_marginBottom="4dp"/>
+
+    </LinearLayout>
+
+    <!-- ═══ BOTTOM BAR: Program info | Aspect | LIVE badge ═══ -->
     <LinearLayout
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
@@ -366,7 +425,6 @@
         android:visibility="invisible"
         android:alpha="0">
 
-        <!-- Channel / Episode info -->
         <TextView
             android:id="@+id/tvProgramInfo"
             android:layout_width="0dp"
@@ -378,7 +436,7 @@
             android:maxLines="1"
             android:ellipsize="end"/>
 
-        <!-- Aspect Ratio — bottom right (Smarters style) -->
+        <!-- Aspect Ratio bottom -->
         <TextView
             android:id="@+id/btnAspectRatioBottom"
             android:layout_width="wrap_content"
@@ -392,7 +450,7 @@
             android:background="@drawable/btn_player_control"
             android:layout_marginStart="8dp"/>
 
-        <!-- Live badge -->
+        <!-- Live badge (live only) -->
         <TextView
             android:id="@+id/tvLiveBadge"
             android:layout_width="wrap_content"
