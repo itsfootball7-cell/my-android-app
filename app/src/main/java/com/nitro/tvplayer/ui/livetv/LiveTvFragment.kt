@@ -8,22 +8,28 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.nitro.tvplayer.databinding.FragmentLiveTvBinding
 import com.nitro.tvplayer.ui.player.PlayerActivity
 import com.nitro.tvplayer.utils.loadUrl
 import com.nitro.tvplayer.utils.visible
+import com.nitro.tvplayer.utils.gone
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class LiveTvFragment : Fragment() {
 
+    // ── Use activityViewModels so ViewModel survives tab switches ──
+    private val viewModel: LiveTvViewModel by activityViewModels()
+
     private var _binding: FragmentLiveTvBinding? = null
     private val binding get() = _binding!!
-    private val viewModel: LiveTvViewModel by viewModels()
+
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var streamAdapter: LiveStreamAdapter
 
@@ -74,29 +80,54 @@ class LiveTvFragment : Fragment() {
     }
 
     private fun observeViewModel() {
-        lifecycleScope.launch {
-            viewModel.categories.collect { categoryAdapter.submitList(it) }
-        }
-        lifecycleScope.launch {
-            viewModel.streams.collect { streamAdapter.submitList(it) }
-        }
-        lifecycleScope.launch {
-            viewModel.selectedStream.collect { stream ->
-                stream?.let {
-                    binding.tvChannelName.text = it.name
-                    binding.ivChannelLogo.loadUrl(it.streamIcon)
-                    binding.tvLiveBadge.visible()
+        // ── repeatOnLifecycle cancels collection when fragment is STOPPED
+        //    and restarts when STARTED — prevents null binding crash ──
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+
+                launch {
+                    viewModel.categories.collect { cats ->
+                        _binding?.rvCategories?.let {
+                            categoryAdapter.submitList(cats)
+                        }
+                    }
                 }
-            }
-        }
-        lifecycleScope.launch {
-            viewModel.loading.collect {
-                binding.progressBar.visibility = if (it) View.VISIBLE else View.GONE
-            }
-        }
-        lifecycleScope.launch {
-            viewModel.error.collect { err ->
-                err?.let { binding.tvError.text = it; binding.tvError.visible() }
+
+                launch {
+                    viewModel.streams.collect { streams ->
+                        _binding?.rvStreams?.let {
+                            streamAdapter.submitList(streams)
+                        }
+                    }
+                }
+
+                launch {
+                    viewModel.selectedStream.collect { stream ->
+                        stream ?: return@collect
+                        _binding?.let { b ->
+                            b.tvChannelName.text = stream.name
+                            b.ivChannelLogo.loadUrl(stream.streamIcon)
+                            b.tvLiveBadge.visible()
+                        }
+                    }
+                }
+
+                launch {
+                    viewModel.loading.collect { loading ->
+                        _binding?.progressBar?.visibility =
+                            if (loading) View.VISIBLE else View.GONE
+                    }
+                }
+
+                launch {
+                    viewModel.error.collect { err ->
+                        err ?: return@collect
+                        _binding?.tvError?.let { tv ->
+                            tv.text = err
+                            tv.visible()
+                        }
+                    }
+                }
             }
         }
     }
@@ -109,5 +140,8 @@ class LiveTvFragment : Fragment() {
         })
     }
 
-    override fun onDestroyView() { super.onDestroyView(); _binding = null }
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null  // must null out to prevent memory leak
+    }
 }
