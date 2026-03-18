@@ -79,7 +79,6 @@ class MoviesViewModel @Inject constructor(
     fun filterByCategory(category: Category) {
         selectedCategory.value = category
         val filtered = when (category.categoryId) {
-
             MOVIE_CAT_ALL -> allMovies.value
 
             MOVIE_CAT_FAVOURITES -> {
@@ -89,14 +88,9 @@ class MoviesViewModel @Inject constructor(
             }
 
             MOVIE_CAT_CONTINUE -> {
-                // Get watched list sorted by most recently watched
                 val watched  = positionManager.getWatchedByType("movie")
-                if (watched.isEmpty()) return@filterByCategory run {
-                    movies.value = emptyList()
-                }
-                // Build a map of streamId → VodStream for fast lookup
+                if (watched.isEmpty()) { movies.value = emptyList(); return }
                 val movieMap = allMovies.value.associateBy { "movie_${it.streamId}" }
-                // Return movies in order of last watched
                 watched.mapNotNull { entry -> movieMap[entry.contentId] }
             }
 
@@ -112,12 +106,9 @@ class MoviesViewModel @Inject constructor(
         if (filtered.isNotEmpty()) selectedMovie.value = filtered.first()
     }
 
-    // Force refresh Continue Watching (call this when returning to Movies tab)
     fun refreshContinueWatching() {
         val cat = selectedCategory.value ?: return
-        if (cat.categoryId == MOVIE_CAT_CONTINUE) {
-            filterByCategory(cat)
-        }
+        if (cat.categoryId == MOVIE_CAT_CONTINUE) filterByCategory(cat)
     }
 
     fun selectMovie(movie: VodStream) { selectedMovie.value = movie }
@@ -128,4 +119,7 @@ class MoviesViewModel @Inject constructor(
     }
 
     fun buildStreamUrl(streamId: Int, ext: String) = repo.buildVodUrl(streamId, ext)
+
+    // Used by SearchFragment
+    fun getAllMovies(): List<VodStream> = allMovies.value
 }
