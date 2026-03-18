@@ -61,7 +61,6 @@ class MoviesFragment : Fragment() {
         moviesAdapter = MoviesAdapter(
             onClick = { viewModel.selectMovie(it) },
             onLongPress = { movie ->
-                // ── Long press → Add to Favourites ──
                 val url = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
                 val favItem = FavouriteItem(
                     id         = "movie_${movie.streamId}",
@@ -112,19 +111,19 @@ class MoviesFragment : Fragment() {
                 }
                 launch {
                     viewModel.movies.collect { list ->
-                        _binding?.let { moviesAdapter.submitList(list) }
+                        _binding ?: return@collect
+                        moviesAdapter.submitList(list)
                     }
                 }
                 launch {
                     viewModel.selectedMovie.collect { movie ->
                         movie ?: return@collect
-                        _binding?.let { b ->
-                            b.tvMovieTitle.text  = movie.name
-                            b.tvMovieYear.text   = movie.releaseDate ?: ""
-                            b.tvMovieRating.text = "★ ${movie.rating5 ?: movie.rating ?: "N/A"}"
-                            b.tvMoviePlot.text   = movie.plot ?: "No description available."
-                            b.ivMoviePoster.loadUrl(movie.streamIcon)
-                        }
+                        _binding ?: return@collect
+                        binding.tvMovieTitle.text  = movie.name
+                        binding.tvMovieYear.text   = movie.releaseDate ?: ""
+                        binding.tvMovieRating.text = "★ ${movie.rating5 ?: movie.rating ?: "N/A"}"
+                        binding.tvMoviePlot.text   = movie.plot ?: "No description available."
+                        binding.ivMoviePoster.loadUrl(movie.streamIcon)
                     }
                 }
                 launch {
