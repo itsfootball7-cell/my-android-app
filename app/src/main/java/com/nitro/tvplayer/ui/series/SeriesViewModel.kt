@@ -60,9 +60,7 @@ class SeriesViewModel @Inject constructor(
                         Category(SERIES_CAT_RECENTLY_ADDED, "Recently Added",    0)
                     )
                     categories.value = special + catList
-                    // ── Auto-select FIRST REAL category ──
-                    val firstReal = catList.firstOrNull()
-                    if (firstReal != null) selectedCategory.value = firstReal
+                    selectedCategory.value = catList.firstOrNull()
                 }
 
                 seriesDeferred.await().onSuccess { list ->
@@ -71,7 +69,6 @@ class SeriesViewModel @Inject constructor(
                     seriesList.value = if (firstCatId != null)
                         list.filter { it.categoryId == firstCatId }
                     else list
-                    // Load first series info silently
                     if (seriesList.value.isNotEmpty()) {
                         loadSeriesInfo(seriesList.value.first(), silent = true)
                     }
@@ -99,8 +96,14 @@ class SeriesViewModel @Inject constructor(
             }
 
             SERIES_CAT_CONTINUE -> {
-                allSeries.value.filter { series ->
-                    positionManager.hasResumePoint("series_${series.seriesId}")
+                val watched = positionManager.getWatchedByType("series")
+                val watchedSeriesIds = watched.mapNotNull { entry ->
+                    entry.contentId.removePrefix("series_").toIntOrNull()
+                }.toSet()
+                val seriesMap = allSeries.value.associateBy { it.seriesId }
+                watched.mapNotNull { entry ->
+                    val id = entry.contentId.removePrefix("series_").toIntOrNull()
+                    if (id != null) seriesMap[id] else null
                 }
             }
 
@@ -140,16 +143,13 @@ class SeriesViewModel @Inject constructor(
                     selectedSeason.value = keys.firstOrNull() ?: "1"
                     episodes.value       = eps[selectedSeason.value] ?: emptyList()
                     seriesInfoLoaded.add(series.seriesId)
-                }.onFailure { e ->
-                    // Don't crash — just clear episodes gracefully
+                }.onFailure {
                     seasons.value  = emptyList()
                     episodes.value = emptyList()
-                    if (!silent) error.value = "Could not load episodes: ${e.message}"
                 }
             } catch (e: Exception) {
                 seasons.value  = emptyList()
                 episodes.value = emptyList()
-                if (!silent) error.value = "Could not load episodes: ${e.message}"
             } finally {
                 loading.value = false
             }
