@@ -33,6 +33,7 @@ class SeriesFragment : Fragment() {
 
     private var _binding: FragmentSeriesBinding? = null
     private val binding get() = _binding!!
+
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var seriesAdapter: SeriesAdapter
     private lateinit var episodeAdapter: EpisodeAdapter
@@ -61,15 +62,16 @@ class SeriesFragment : Fragment() {
         }
 
         seriesAdapter = SeriesAdapter(
-            onClick = { viewModel.selectSeries(it) },
+            onClick = { series ->
+                viewModel.selectSeries(series)
+            },
             onLongPress = { series ->
-                // ── Long press → Add to Favourites ──
                 val favItem = FavouriteItem(
                     id         = "series_${series.seriesId}",
                     name       = series.name,
                     icon       = series.cover,
                     type       = "series",
-                    streamUrl  = "",   // series opens via episode selection
+                    streamUrl  = "",
                     categoryId = series.categoryId,
                     extra      = series.seriesId.toString()
                 )
@@ -95,17 +97,18 @@ class SeriesFragment : Fragment() {
         }
 
         episodeAdapter = EpisodeAdapter { episode ->
-            val episodes   = viewModel.episodes.value
-            val index      = episodes.indexOfFirst { it.id == episode.id }
-            val seriesName = viewModel.selectedSeries.value?.name ?: ""
-            val season     = viewModel.selectedSeason.value
-            val urls       = ArrayList(episodes.map {
+            val episodes      = viewModel.episodes.value
+            val index         = episodes.indexOfFirst { it.id == episode.id }
+            val seriesName    = viewModel.selectedSeries.value?.name ?: ""
+            val season        = viewModel.selectedSeason.value
+            val urls          = ArrayList(episodes.map {
                 viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv")
             })
             val episodeTitles = ArrayList(episodes.map {
                 "$seriesName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}"
             })
             val ids = ArrayList(episodes.map { "ep_${it.id}" })
+
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
                     putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
@@ -125,6 +128,7 @@ class SeriesFragment : Fragment() {
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+
                 launch {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
@@ -132,25 +136,52 @@ class SeriesFragment : Fragment() {
                         if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
                     }
                 }
-                launch { viewModel.seriesList.collect { _binding?.let { seriesAdapter.submitList(it) } } }
-                launch { viewModel.seasons.collect   { _binding?.let { seasonAdapter.submitList(it) } } }
-                launch { viewModel.episodes.collect  { _binding?.let { episodeAdapter.submitList(it) } } }
+
+                launch {
+                    viewModel.seriesList.collect { list ->
+                        _binding ?: return@collect
+                        seriesAdapter.submitList(list)
+                    }
+                }
+
+                launch {
+                    viewModel.seasons.collect { list ->
+                        _binding ?: return@collect
+                        seasonAdapter.submitList(list)
+                    }
+                }
+
+                launch {
+                    viewModel.episodes.collect { list ->
+                        _binding ?: return@collect
+                        episodeAdapter.submitList(list)
+                    }
+                }
+
                 launch {
                     viewModel.selectedSeries.collect { series ->
                         series ?: return@collect
-                        _binding?.let { b ->
-                            b.tvSeriesTitle.text  = series.name
-                            b.tvSeriesInfo.text   = "${series.releaseDate ?: ""} • ${series.genre ?: ""}"
-                            b.tvSeriesRating.text = "★ ${series.rating5 ?: series.rating ?: "N/A"}"
-                            b.tvSeriesPlot.text   = series.plot ?: "No description available."
-                            b.ivSeriesCover.loadUrl(series.cover)
-                        }
+                        _binding ?: return@collect
+                        binding.tvSeriesTitle.text  = series.name
+                        binding.tvSeriesInfo.text   = "${series.releaseDate ?: ""} • ${series.genre ?: ""}"
+                        binding.tvSeriesRating.text = "★ ${series.rating5 ?: series.rating ?: "N/A"}"
+                        binding.tvSeriesPlot.text   = series.plot ?: "No description available."
+                        binding.ivSeriesCover.loadUrl(series.cover)
                     }
                 }
+
                 launch {
                     viewModel.loading.collect { loading ->
                         _binding?.progressBar?.visibility =
                             if (loading) View.VISIBLE else View.GONE
+                    }
+                }
+
+                launch {
+                    viewModel.error.collect { err ->
+                        err ?: return@collect
+                        _binding ?: return@collect
+                        // silent — don't crash on series info errors
                     }
                 }
             }
@@ -165,5 +196,8 @@ class SeriesFragment : Fragment() {
         })
     }
 
-    override fun onDestroyView() { super.onDestroyView(); _binding = null }
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
 }
