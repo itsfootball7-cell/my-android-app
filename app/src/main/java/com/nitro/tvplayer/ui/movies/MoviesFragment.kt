@@ -62,21 +62,18 @@ class MoviesFragment : Fragment() {
             onClick = { viewModel.selectMovie(it) },
             onLongPress = { movie ->
                 val url = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
-                val favItem = FavouriteItem(
-                    id         = "movie_${movie.streamId}",
-                    name       = movie.name,
-                    icon       = movie.streamIcon,
-                    type       = "movie",
-                    streamUrl  = url,
-                    categoryId = movie.categoryId,
-                    extra      = movie.extension
+                val added = favouritesManager.toggle(
+                    FavouriteItem(
+                        id = "movie_${movie.streamId}", name = movie.name,
+                        icon = movie.streamIcon, type = "movie",
+                        streamUrl = url, categoryId = movie.categoryId,
+                        extra = movie.extension
+                    )
                 )
-                val added = favouritesManager.toggle(favItem)
-                val msg = if (added)
-                    "⭐ \"${movie.name}\" added to Favourites"
-                else
-                    "\"${movie.name}\" removed from Favourites"
-                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(),
+                    if (added) "⭐ \"${movie.name}\" added to Favourites"
+                    else "\"${movie.name}\" removed from Favourites",
+                    Toast.LENGTH_SHORT).show()
             }
         )
         binding.rvMovies.apply {
@@ -85,17 +82,15 @@ class MoviesFragment : Fragment() {
         }
 
         binding.btnPlay.setOnClickListener {
-            val movie     = viewModel.selectedMovie.value ?: return@setOnClickListener
-            val url       = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
-            val contentId = "movie_${movie.streamId}"
-            startActivity(
-                Intent(requireContext(), PlayerActivity::class.java).apply {
-                    putExtra(PlayerActivity.EXTRA_URL,   url)
-                    putExtra(PlayerActivity.EXTRA_TITLE, movie.name)
-                    putExtra(PlayerActivity.EXTRA_TYPE,  "movie")
-                    putStringArrayListExtra(PlayerActivity.EXTRA_IDS, arrayListOf(contentId))
-                }
-            )
+            val movie = viewModel.selectedMovie.value ?: return@setOnClickListener
+            val url   = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
+            startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
+                putExtra(PlayerActivity.EXTRA_URL,   url)
+                putExtra(PlayerActivity.EXTRA_TITLE, movie.name)
+                putExtra(PlayerActivity.EXTRA_TYPE,  "movie")
+                putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
+                    arrayListOf("movie_${movie.streamId}"))
+            })
         }
     }
 
@@ -106,7 +101,14 @@ class MoviesFragment : Fragment() {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
-                        if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
+                        // 4 special categories at top → first real = index 4
+                        val firstRealIndex = cats.indexOfFirst { c ->
+                            c.categoryId != MOVIE_CAT_ALL &&
+                            c.categoryId != MOVIE_CAT_FAVOURITES &&
+                            c.categoryId != MOVIE_CAT_CONTINUE &&
+                            c.categoryId != MOVIE_CAT_RECENTLY_ADDED
+                        }
+                        if (firstRealIndex >= 0) categoryAdapter.setSelected(firstRealIndex)
                     }
                 }
                 launch {
