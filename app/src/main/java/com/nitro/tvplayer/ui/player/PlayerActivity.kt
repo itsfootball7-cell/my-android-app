@@ -22,6 +22,7 @@ import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.nitro.tvplayer.databinding.ActivityPlayerBinding
 import com.nitro.tvplayer.utils.PlaybackPositionManager
+import com.nitro.tvplayer.utils.PlayerHolder
 import com.nitro.tvplayer.utils.PlayerPrefs
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -36,38 +37,38 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_TYPE         = "extra_type"
         const val EXTRA_PLAYLIST     = "extra_playlist"
         const val EXTRA_TITLES       = "extra_titles"
-        const val EXTRA_IDS          = "extra_ids"        // content IDs for resume
+        const val EXTRA_IDS          = "extra_ids"
         const val EXTRA_START_INDEX  = "extra_start_index"
+        const val EXTRA_USE_EXISTING = "use_existing_player"
 
-        private const val CONTROLS_HIDE_DELAY = 4000L
-        private const val SWIPE_THRESHOLD     = 8f
-        private const val FADE_DURATION       = 300L
-        private const val SEEK_UPDATE_INTERVAL = 500L
+        private const val CONTROLS_HIDE_DELAY   = 4000L
+        private const val SWIPE_THRESHOLD       = 8f
+        private const val FADE_DURATION         = 300L
+        private const val SEEK_UPDATE_INTERVAL  = 500L
     }
 
     private lateinit var binding: ActivityPlayerBinding
     private var player: ExoPlayer? = null
-    private lateinit var trackSelector: DefaultTrackSelector
+    private var trackSelector: DefaultTrackSelector? = null
     private lateinit var audioManager: AudioManager
     private val handler     = Handler(Looper.getMainLooper())
     private val seekHandler = Handler(Looper.getMainLooper())
 
     @Inject lateinit var playerPrefs: PlayerPrefs
     @Inject lateinit var positionManager: PlaybackPositionManager
+    @Inject lateinit var playerHolder: PlayerHolder
 
-    // Playlist
     private var urls         = arrayListOf<String>()
     private var titles       = arrayListOf<String>()
-    private var contentIds   = arrayListOf<String>()  // for resume persistence
+    private var contentIds   = arrayListOf<String>()
     private var currentIndex = 0
     private var contentType  = "live"
     private val isLive get() = contentType == "live"
+    private var useExistingPlayer = false
 
-    // Current content ID for persistence
     private val currentContentId get() =
         if (contentIds.size > currentIndex) contentIds[currentIndex] else ""
 
-    // Touch
     private var touchStartX   = 0f
     private var touchStartY   = 0f
     private var touchStartVol = 0
@@ -77,11 +78,8 @@ class PlayerActivity : AppCompatActivity() {
     private var screenWidth   = 0
     private var screenHeight  = 0
     private var controlsVisible = false
+    private var isUserSeeking   = false
 
-    // Seek bar
-    private var isUserSeeking = false
-
-    // Aspect ratio
     private val aspectRatios = listOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT,
         AspectRatioFrameLayout.RESIZE_MODE_FILL,
@@ -93,16 +91,13 @@ class PlayerActivity : AppCompatActivity() {
     private var aspectIndex  = 0
 
     private val hideControlsRunnable = Runnable { fadeOutAll() }
-
-    // Periodic seek bar updater
-    private val seekUpdateRunnable = object : Runnable {
+    private val seekUpdateRunnable   = object : Runnable {
         override fun run() {
             updateSeekBar()
             seekHandler.postDelayed(this, SEEK_UPDATE_INTERVAL)
         }
     }
 
-    // ─── onCreate ─────────────────────────────────────────────
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -115,12 +110,13 @@ class PlayerActivity : AppCompatActivity() {
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
-        screenWidth  = resources.displayMetrics.widthPixels
-        screenHeight = resources.displayMetrics.heightPixels
-        contentType  = intent.getStringExtra(EXTRA_TYPE) ?: "live"
+        audioManager        = getSystemService(AUDIO_SERVICE) as AudioManager
+        screenWidth         = resources.displayMetrics.widthPixels
+        screenHeight        = resources.displayMetrics.heightPixels
+        contentType         = intent.getStringExtra(EXTRA_TYPE) ?: "live"
+        useExistingPlayer   = intent.getBooleanExtra(EXTRA_USE_EXISTING, false)
+        aspectIndex         = playerPrefs.getAspectRatioIndex()
 
-        // Build playlist
         val pUrls   = intent.getStringArrayListExtra(EXTRA_PLAYLIST)
         val pTitles = intent.getStringArrayListExtra(EXTRA_TITLES)
         val pIds    = intent.getStringArrayListExtra(EXTRA_IDS)
@@ -138,24 +134,15 @@ class PlayerActivity : AppCompatActivity() {
             contentIds = arrayListOf(id)
         }
 
-        // Restore persisted aspect ratio
-        aspectIndex = playerPrefs.getAspectRatioIndex()
-
-        // All UI starts hidden
         listOf(
             binding.topBar, binding.bottomBar,
             binding.centerControls,
             binding.leftBarContainer, binding.rightBarContainer
         ).forEach { it.alpha = 0f; it.visibility = View.INVISIBLE }
 
-        // Seek bar section hidden for live
         binding.seekBarSection.visibility = if (isLive) View.GONE else View.VISIBLE
-
-        // CC only for VOD
-        binding.btnSubtitles.visibility = if (isLive) View.GONE else View.VISIBLE
-
-        // Live badge only for live
-        binding.tvLiveBadge.visibility = if (isLive) View.VISIBLE else View.GONE
+        binding.btnSubtitles.visibility   = if (isLive) View.GONE else View.VISIBLE
+        binding.tvLiveBadge.visibility    = if (isLive) View.VISIBLE else View.GONE
 
         binding.btnBack.setOnClickListener { finish() }
 
@@ -164,44 +151,99 @@ class PlayerActivity : AppCompatActivity() {
         setupAspectButtons()
         setupSeekBar()
         setupTouchGestures()
-        playIndex(currentIndex)
+
+        if (useExistingPlayer && isLive && playerHolder.player != null) {
+            // ── Seamless transfer: reuse existing player, no reload ──
+            attachExistingPlayer()
+        } else {
+            playIndex(currentIndex)
+        }
     }
 
-    // ─── Play by index ────────────────────────────────────────
+    // ─── Seamless live TV transfer ────────────────────────────
+    private fun attachExistingPlayer() {
+        player = playerHolder.player
+        binding.playerView.player        = player
+        binding.playerView.useController = false
+        binding.playerView.keepScreenOn  = true
+        binding.playerView.resizeMode    = aspectRatios[aspectIndex]
+
+        // Update title
+        val title = if (currentIndex < titles.size) titles[currentIndex] else ""
+        binding.tvTitle.text       = title
+        binding.tvProgramInfo.text = title
+
+        binding.btnPrev.visibility = if (currentIndex > 0) View.VISIBLE else View.INVISIBLE
+        binding.btnNext.visibility = if (currentIndex < urls.size - 1) View.VISIBLE else View.INVISIBLE
+        binding.progressBar.visibility = View.GONE
+
+        // Setup controls
+        binding.btnPlayPause.setOnClickListener {
+            if (player?.isPlaying == true) {
+                player?.pause(); binding.btnPlayPause.text = "▶"
+            } else {
+                player?.play(); binding.btnPlayPause.text = "⏸"
+            }
+            resetHideControls()
+        }
+        binding.btnPrev.setOnClickListener {
+            if (currentIndex > 0) {
+                currentIndex--
+                val url = urls[currentIndex]
+                playerHolder.currentUrl = url
+                player?.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+                player?.prepare(); player?.play()
+                binding.tvTitle.text = if (currentIndex < titles.size) titles[currentIndex] else ""
+                resetHideControls()
+            }
+        }
+        binding.btnNext.setOnClickListener {
+            if (currentIndex < urls.size - 1) {
+                currentIndex++
+                val url = urls[currentIndex]
+                playerHolder.currentUrl = url
+                player?.setMediaItem(MediaItem.fromUri(Uri.parse(url)))
+                player?.prepare(); player?.play()
+                binding.tvTitle.text = if (currentIndex < titles.size) titles[currentIndex] else ""
+                resetHideControls()
+            }
+        }
+
+        // Fade in immediately since stream is already playing
+        handler.postDelayed({ fadeInAll(); scheduleHide() }, 100)
+    }
+
+    // ─── Normal play by index (VOD / new streams) ─────────────
     private fun playIndex(index: Int) {
         if (index < 0 || index >= urls.size) return
 
-        // Save position of current content before switching
         if (!isLive && currentContentId.isNotBlank() && player != null) {
-            val pos = player!!.currentPosition
-            val dur = player!!.duration.takeIf { it > 0 } ?: 0L
-            positionManager.savePosition(currentContentId, pos, dur)
+            positionManager.savePosition(
+                currentContentId,
+                player!!.currentPosition,
+                player!!.duration.takeIf { it > 0 } ?: 0L
+            )
         }
 
         currentIndex = index
         val url   = urls[index]
         val title = if (index < titles.size) titles[index] else ""
-
         binding.tvProgramInfo.text = title
         binding.tvTitle.text       = title
 
-        // Prev/Next visibility
         binding.btnPrev.visibility = if (currentIndex > 0) View.VISIBLE else View.INVISIBLE
         binding.btnNext.visibility = if (currentIndex < urls.size - 1) View.VISIBLE else View.INVISIBLE
 
-        // Release old player
         player?.release()
         seekHandler.removeCallbacks(seekUpdateRunnable)
         binding.progressBar.visibility = View.VISIBLE
         binding.tvError.visibility     = View.GONE
-
-        // Reset seek bar
-        binding.seekBar.progress    = 0
-        binding.tvCurrentTime.text  = "0:00"
-        binding.tvRemainingTime.text = "- 0:00"
+        binding.seekBar.progress       = 0
+        binding.tvCurrentTime.text     = "0:00"
+        binding.tvRemainingTime.text   = "- 0:00"
 
         trackSelector = DefaultTrackSelector(this)
-        player = ExoPlayer.Builder(this).setTrackSelector(trackSelector).build()
+        player = ExoPlayer.Builder(this).setTrackSelector(trackSelector!!).build()
         binding.playerView.player        = player
         binding.playerView.useController = false
         binding.playerView.keepScreenOn  = true
@@ -215,33 +257,21 @@ class PlayerActivity : AppCompatActivity() {
         player!!.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
-                    Player.STATE_BUFFERING -> {
-                        binding.progressBar.visibility = View.VISIBLE
-                    }
+                    Player.STATE_BUFFERING -> binding.progressBar.visibility = View.VISIBLE
                     Player.STATE_READY -> {
                         binding.progressBar.visibility = View.GONE
                         binding.tvError.visibility     = View.GONE
-
-                        // Resume from saved position for VOD
                         if (!isLive) {
                             val savedPos = positionManager.getSavedPosition(currentContentId)
-                            if (savedPos > 0L) {
-                                player!!.seekTo(savedPos)
-                            }
-                            // Start seek bar updates
+                            if (savedPos > 0L) player!!.seekTo(savedPos)
                             seekHandler.post(seekUpdateRunnable)
                         }
-
                         if (!isLive) setupSubtitleButton()
                     }
                     Player.STATE_ENDED -> {
-                        // Clear saved position on completion
                         if (!isLive) positionManager.clearPosition(currentContentId)
                         seekHandler.removeCallbacks(seekUpdateRunnable)
-                        // Auto-advance for series
-                        if (!isLive && currentIndex < urls.size - 1) {
-                            playIndex(currentIndex + 1)
-                        }
+                        if (!isLive && currentIndex < urls.size - 1) playIndex(currentIndex + 1)
                     }
                     Player.STATE_IDLE -> {
                         binding.progressBar.visibility = View.GONE
@@ -249,11 +279,7 @@ class PlayerActivity : AppCompatActivity() {
                     }
                 }
             }
-
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                syncPlayPauseBtn()
-            }
-
+            override fun onIsPlayingChanged(isPlaying: Boolean) { syncPlayPauseBtn() }
             override fun onPlayerError(error: PlaybackException) {
                 binding.progressBar.visibility = View.GONE
                 binding.tvError.text           = "Playback error: ${error.message}"
@@ -262,11 +288,9 @@ class PlayerActivity : AppCompatActivity() {
             }
         })
 
-        // Controls
         binding.btnPlayPause.setOnClickListener {
             if (player?.isPlaying == true) player?.pause() else player?.play()
-            syncPlayPauseBtn()
-            resetHideControls()
+            syncPlayPauseBtn(); resetHideControls()
         }
         binding.btnPrev.setOnClickListener {
             if (currentIndex > 0) { playIndex(currentIndex - 1); resetHideControls() }
@@ -283,28 +307,22 @@ class PlayerActivity : AppCompatActivity() {
     // ─── Seek Bar ─────────────────────────────────────────────
     private fun setupSeekBar() {
         binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-
             override fun onStartTrackingTouch(seekBar: SeekBar?) {
                 isUserSeeking = true
-                // Stop auto-hide while scrubbing
                 handler.removeCallbacks(hideControlsRunnable)
             }
-
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                 if (!fromUser) return
                 val duration = player?.duration ?: return
                 if (duration <= 0) return
-                // Show preview time while scrubbing
                 val seekToMs = (progress / 1000f * duration).toLong()
                 binding.tvCurrentTime.text  = formatTime(seekToMs)
                 binding.tvRemainingTime.text = "- ${formatTime(duration - seekToMs)}"
             }
-
             override fun onStopTrackingTouch(seekBar: SeekBar?) {
                 isUserSeeking = false
                 val duration = player?.duration ?: return
                 if (duration <= 0) return
-                // Seek to the chosen position
                 val seekToMs = (seekBar!!.progress / 1000f * duration).toLong()
                 player?.seekTo(seekToMs)
                 resetHideControls()
@@ -312,34 +330,24 @@ class PlayerActivity : AppCompatActivity() {
         })
     }
 
-    // Update seek bar every 500ms while playing
     private fun updateSeekBar() {
         if (isUserSeeking) return
-        val player    = player ?: return
-        val duration  = player.duration.takeIf { it > 0 } ?: return
-        val position  = player.currentPosition
-
-        val progress  = ((position * 1000f) / duration).toInt()
-        binding.seekBar.progress    = progress
+        val p = player ?: return
+        val duration = p.duration.takeIf { it > 0 } ?: return
+        val position = p.currentPosition
+        binding.seekBar.progress    = ((position * 1000f) / duration).toInt()
         binding.tvCurrentTime.text  = formatTime(position)
         binding.tvRemainingTime.text = "- ${formatTime(duration - position)}"
     }
 
-    // Format ms → "H:MM:SS" or "M:SS"
     private fun formatTime(ms: Long): String {
         if (ms < 0) return "0:00"
-        val totalSeconds = ms / 1000
-        val hours   = totalSeconds / 3600
-        val minutes = (totalSeconds % 3600) / 60
-        val seconds = totalSeconds % 60
-        return if (hours > 0) {
-            "%d:%02d:%02d".format(hours, minutes, seconds)
-        } else {
-            "%d:%02d".format(minutes, seconds)
-        }
+        val total = ms / 1000
+        val h = total / 3600; val m = (total % 3600) / 60; val s = total % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
     }
 
-    // ─── Aspect Ratio (persisted) ─────────────────────────────
+    // ─── Aspect Ratio ─────────────────────────────────────────
     private fun setupAspectButtons() {
         updateAspectLabel()
         val cycle = {
@@ -359,7 +367,7 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnAspectRatioBottom.text = label
     }
 
-    // ─── Subtitles / CC (VOD only) ────────────────────────────
+    // ─── Subtitles ────────────────────────────────────────────
     private fun setupSubtitleButton() {
         binding.btnSubtitles.setOnClickListener { view ->
             try {
@@ -367,33 +375,27 @@ class PlayerActivity : AppCompatActivity() {
                 val popup  = android.widget.PopupMenu(this, view)
                 popup.menu.add(0, -1, 0, "⛔ Off")
                 val textGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
-                if (textGroups.isEmpty()) {
-                    popup.menu.add(0, 99, 0, "No subtitles available")
-                } else {
+                if (textGroups.isEmpty()) popup.menu.add(0, 99, 0, "No subtitles available")
+                else {
                     var id = 0
                     textGroups.forEach { group ->
-                        for (i in 0 until group.length) {
-                            val lang = group.getTrackFormat(i).language ?: "Track ${id + 1}"
-                            popup.menu.add(0, id++, 0, "💬 $lang")
-                        }
+                        for (i in 0 until group.length)
+                            popup.menu.add(0, id++, 0, "💬 ${group.getTrackFormat(i).language ?: "Track"}")
                     }
                 }
                 popup.setOnMenuItemClickListener { item ->
                     try {
                         if (item.itemId == -1) {
-                            trackSelector.parameters = trackSelector.buildUponParameters()
+                            trackSelector?.parameters = trackSelector!!.buildUponParameters()
                                 .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                                 .setPreferredTextLanguage(null).build()
-                            binding.btnSubtitles.alpha = 0.5f
                         } else {
                             var count = 0
                             textGroups.forEach { group ->
                                 for (i in 0 until group.length) {
-                                    if (count == item.itemId) {
-                                        trackSelector.parameters = trackSelector.buildUponParameters()
+                                    if (count == item.itemId) trackSelector?.parameters =
+                                        trackSelector!!.buildUponParameters()
                                             .addOverride(TrackSelectionOverride(group.mediaTrackGroup, i)).build()
-                                        binding.btnSubtitles.alpha = 1.0f
-                                    }
                                     count++
                                 }
                             }
@@ -407,7 +409,7 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
-    // ─── Volume & Brightness UI ───────────────────────────────
+    // ─── Volume & Brightness ──────────────────────────────────
     private fun updateVolumeUI() {
         val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
         val cur = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
@@ -432,7 +434,7 @@ class PlayerActivity : AppCompatActivity() {
         val p = v.layoutParams; p.height = fillPx; v.layoutParams = p
     }
 
-    // ─── Fade helpers ─────────────────────────────────────────
+    // ─── Fade ─────────────────────────────────────────────────
     private fun fadeIn(view: View) {
         if (view.visibility == View.VISIBLE && view.alpha == 1f) return
         view.visibility = View.VISIBLE
@@ -446,21 +448,17 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun fadeInAll() {
         controlsVisible = true
-        fadeIn(binding.topBar)
-        fadeIn(binding.bottomBar)
+        fadeIn(binding.topBar); fadeIn(binding.bottomBar)
         fadeIn(binding.centerControls)
-        fadeIn(binding.leftBarContainer)
-        fadeIn(binding.rightBarContainer)
+        fadeIn(binding.leftBarContainer); fadeIn(binding.rightBarContainer)
         if (!isLive) fadeIn(binding.seekBarSection)
     }
 
     private fun fadeOutAll() {
         controlsVisible = false
-        fadeOut(binding.topBar)
-        fadeOut(binding.bottomBar)
+        fadeOut(binding.topBar); fadeOut(binding.bottomBar)
         fadeOut(binding.centerControls)
-        fadeOut(binding.leftBarContainer)
-        fadeOut(binding.rightBarContainer)
+        fadeOut(binding.leftBarContainer); fadeOut(binding.rightBarContainer)
         if (!isLive) fadeOut(binding.seekBarSection)
         binding.volumeIndicator.visibility     = View.GONE
         binding.brightnessIndicator.visibility = View.GONE
@@ -471,42 +469,29 @@ class PlayerActivity : AppCompatActivity() {
         handler.postDelayed(hideControlsRunnable, CONTROLS_HIDE_DELAY)
     }
 
-    private fun resetHideControls() {
-        fadeInAll()
-        scheduleHide()
-    }
+    private fun resetHideControls() { fadeInAll(); scheduleHide() }
 
-    // ─── Touch Gestures ───────────────────────────────────────
+    // ─── Touch ────────────────────────────────────────────────
     @SuppressLint("ClickableViewAccessibility")
     private fun setupTouchGestures() {
         binding.touchOverlay.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    touchStartX   = event.x
-                    touchStartY   = event.y
+                    touchStartX   = event.x; touchStartY   = event.y
                     touchStartVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
                     touchStartBrt = window.attributes.screenBrightness.takeIf { it >= 0 } ?: 0.5f
-                    isSwiping     = false
-                    swipeType     = ""
-                    handler.removeCallbacks(hideControlsRunnable)
-                    true
+                    isSwiping = false; swipeType = ""
+                    handler.removeCallbacks(hideControlsRunnable); true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dy = event.y - touchStartY
                     if (!isSwiping && abs(dy) > SWIPE_THRESHOLD) {
                         isSwiping = true
                         swipeType = if (touchStartX < screenWidth / 2) "brightness" else "volume"
-                        fadeIn(binding.leftBarContainer)
-                        fadeIn(binding.rightBarContainer)
+                        fadeIn(binding.leftBarContainer); fadeIn(binding.rightBarContainer)
                         when (swipeType) {
-                            "volume"     -> {
-                                binding.volumeIndicator.visibility     = View.VISIBLE
-                                binding.brightnessIndicator.visibility = View.GONE
-                            }
-                            "brightness" -> {
-                                binding.brightnessIndicator.visibility = View.VISIBLE
-                                binding.volumeIndicator.visibility     = View.GONE
-                            }
+                            "volume"     -> { binding.volumeIndicator.visibility = View.VISIBLE; binding.brightnessIndicator.visibility = View.GONE }
+                            "brightness" -> { binding.brightnessIndicator.visibility = View.VISIBLE; binding.volumeIndicator.visibility = View.GONE }
                         }
                     }
                     if (isSwiping) {
@@ -514,8 +499,7 @@ class PlayerActivity : AppCompatActivity() {
                         when (swipeType) {
                             "volume" -> {
                                 val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                                val nv  = (touchStartVol + delta * max).toInt().coerceIn(0, max)
-                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, nv, 0)
+                                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (touchStartVol + delta * max).toInt().coerceIn(0, max), 0)
                                 updateVolumeUI()
                             }
                             "brightness" -> {
@@ -528,31 +512,22 @@ class PlayerActivity : AppCompatActivity() {
                     true
                 }
                 MotionEvent.ACTION_UP -> {
-                    if (!isSwiping) {
-                        if (controlsVisible) fadeOutAll()
-                        else { fadeInAll(); scheduleHide() }
-                    } else {
-                        handler.postDelayed({
-                            binding.volumeIndicator.visibility     = View.GONE
-                            binding.brightnessIndicator.visibility = View.GONE
-                            if (!controlsVisible) {
-                                fadeOut(binding.leftBarContainer)
-                                fadeOut(binding.rightBarContainer)
-                            }
-                        }, 1500)
-                    }
-                    isSwiping = false
-                    swipeType = ""
-                    true
+                    if (!isSwiping) { if (controlsVisible) fadeOutAll() else { fadeInAll(); scheduleHide() } }
+                    else handler.postDelayed({
+                        binding.volumeIndicator.visibility = View.GONE
+                        binding.brightnessIndicator.visibility = View.GONE
+                        if (!controlsVisible) { fadeOut(binding.leftBarContainer); fadeOut(binding.rightBarContainer) }
+                    }, 1500)
+                    isSwiping = false; swipeType = ""; true
                 }
                 else -> false
             }
         }
     }
 
-    // ─── Save position on exit ────────────────────────────────
+    // ─── Save position ────────────────────────────────────────
     private fun saveCurrentPosition() {
-        if (!isLive && currentContentId.isNotBlank()) {
+        if (!isLive && !useExistingPlayer && currentContentId.isNotBlank()) {
             val pos = player?.currentPosition ?: 0L
             val dur = player?.duration?.takeIf { it > 0 } ?: 0L
             if (pos > 0L) positionManager.savePosition(currentContentId, pos, dur)
@@ -560,23 +535,29 @@ class PlayerActivity : AppCompatActivity() {
     }
 
     // ─── Lifecycle ────────────────────────────────────────────
-    override fun onPause() {
-        super.onPause()
-        player?.pause()
-        saveCurrentPosition()
-    }
+    override fun onPause()  { super.onPause(); if (!useExistingPlayer) player?.pause(); saveCurrentPosition() }
+    override fun onResume() { super.onResume(); if (!useExistingPlayer) player?.play() }
 
-    override fun onResume() {
-        super.onResume()
-        if (!isLive) player?.play()
+    override fun finish() {
+        // Return shared player to holder when going back to Live TV
+        if (useExistingPlayer && isLive) {
+            playerHolder.isInFullscreen = false
+            binding.playerView.player   = null  // detach view, keep player alive
+        }
+        super.finish()
+        // Smooth fade transition back
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        saveCurrentPosition()
         handler.removeCallbacksAndMessages(null)
         seekHandler.removeCallbacksAndMessages(null)
-        player?.release()
-        player = null
+        saveCurrentPosition()
+        // Only release if this is a normal (non-shared) player
+        if (!useExistingPlayer) {
+            player?.release()
+            player = null
+        }
     }
 }
