@@ -59,49 +59,40 @@ class LiveTvFragment : Fragment() {
         setupSearch()
     }
 
-    // ─── Attach shared player to mini preview view ────────────
+    // ─── Attach shared player to mini preview ─────────────────
     private fun attachPreviewPlayer() {
-        val holder = playerHolder
-
-        if (holder.player == null) {
-            // Create new player and store in holder
-            holder.player = ExoPlayer.Builder(requireContext()).build()
+        if (playerHolder.player == null) {
+            playerHolder.player = ExoPlayer.Builder(requireContext()).build()
         }
-
-        // Attach to preview view — no reload if same stream
-        binding.previewPlayerView.player = holder.player
+        binding.previewPlayerView.player = playerHolder.player
         binding.previewPlayerView.useController = false
 
-        // If returning from fullscreen, stream is already playing — just show it
-        if (holder.isInFullscreen) {
-            holder.isInFullscreen = false
-            holder.currentUrl?.let { showPreviewPlaying() }
+        if (playerHolder.isInFullscreen) {
+            playerHolder.isInFullscreen = false
+            if (playerHolder.currentUrl != null) showPreviewPlaying()
         }
     }
 
     private fun setupPreviewClickListener() {
-        // ── Tap preview box → go fullscreen WITHOUT stopping stream ──
-        val goFullscreen = {
-            val stream = viewModel.selectedStream.value ?: return@let
+        val goFullscreen: () -> Unit = goFullscreen@{
+            val stream = viewModel.selectedStream.value ?: return@goFullscreen
             val streams = viewModel.streams.value
             val index   = streams.indexOfFirst { it.streamId == stream.streamId }
             val urls    = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
             val names   = ArrayList(streams.map { it.name })
+            val sIds    = ArrayList(streams.map { it.streamId })
 
-            // Mark player as going to fullscreen — DON'T release it
             playerHolder.isInFullscreen = true
-
-            // Detach from preview before handing to PlayerActivity
             binding.previewPlayerView.player = null
 
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
                     putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
                     putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
+                    putIntegerArrayListExtra(PlayerActivity.EXTRA_STREAM_IDS, sIds)
                     putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
                     putExtra(PlayerActivity.EXTRA_TYPE, "live")
-                    // Signal to PlayerActivity to use existing player
-                    putExtra("use_existing_player", true)
+                    putExtra(PlayerActivity.EXTRA_USE_EXISTING, true)
                 }
             )
         }
@@ -115,15 +106,12 @@ class LiveTvFragment : Fragment() {
     private fun playInPreview(url: String) {
         val holder = playerHolder
         if (holder.currentUrl == url) {
-            // Already playing this stream — just make sure view is attached
             if (binding.previewPlayerView.player == null) {
                 binding.previewPlayerView.player = holder.player
             }
             showPreviewPlaying()
             return
         }
-
-        // New stream — set media on existing player
         holder.currentUrl = url
         holder.player?.apply {
             setMediaItem(MediaItem.fromUri(Uri.parse(url)))
@@ -134,12 +122,11 @@ class LiveTvFragment : Fragment() {
     }
 
     private fun showPreviewPlaying() {
-        _binding?.let { b ->
-            b.previewPlayerView.visible()
-            b.ivChannelLogo.gone()
-            b.tvClickToWatch.visible()
-            b.tapHint.gone()
-        }
+        val b = _binding ?: return
+        b.previewPlayerView.visible()
+        b.ivChannelLogo.gone()
+        b.tvClickToWatch.visible()
+        b.tapHint.gone()
     }
 
     // ─── Adapters ─────────────────────────────────────────────
@@ -184,40 +171,47 @@ class LiveTvFragment : Fragment() {
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+
                 launch {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
-                        // Auto-select first real category (index 2 after All + Favourites)
+                        // Auto-select first real category (after All + Favourites = index 2)
                         if (cats.size > 2) categoryAdapter.setSelected(2)
                         else if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
                     }
                 }
+
                 launch {
                     viewModel.streams.collect { streams ->
                         _binding ?: return@collect
                         streamAdapter.submitList(streams)
                     }
                 }
+
                 launch {
                     viewModel.selectedStream.collect { stream ->
                         stream ?: return@collect
-                        _binding ?: return@collect
-                        binding.tvChannelName.text = stream.name
-                        binding.ivChannelLogo.loadUrl(stream.streamIcon)
-                        binding.tvLiveBadge.visible()
+                        val b = _binding ?: return@collect
+                        b.tvChannelName.text = stream.name
+                        b.ivChannelLogo.loadUrl(stream.streamIcon)
+                        b.tvLiveBadge.visible()
                     }
                 }
+
                 launch {
                     viewModel.loading.collect { loading ->
                         _binding?.progressBar?.visibility =
                             if (loading) View.VISIBLE else View.GONE
                     }
                 }
+
                 launch {
                     viewModel.error.collect { err ->
                         err ?: return@collect
-                        _binding?.tvError?.let { tv -> tv.text = err; tv.visible() }
+                        val b = _binding ?: return@collect
+                        b.tvError.text = err
+                        b.tvError.visible()
                     }
                 }
             }
@@ -236,7 +230,6 @@ class LiveTvFragment : Fragment() {
     // ─── Lifecycle ────────────────────────────────────────────
     override fun onResume() {
         super.onResume()
-        // Re-attach player if returning from fullscreen
         if (binding.previewPlayerView.player == null) {
             binding.previewPlayerView.player = playerHolder.player
         }
@@ -245,7 +238,6 @@ class LiveTvFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
-        // Only pause if NOT going to fullscreen
         if (!playerHolder.isInFullscreen) {
             playerHolder.player?.pause()
         }
@@ -253,14 +245,12 @@ class LiveTvFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        // Detach view but keep player alive in holder
         _binding?.previewPlayerView?.player = null
         _binding = null
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Only release player when fragment is truly destroyed
         if (!playerHolder.isInFullscreen) {
             playerHolder.player?.release()
             playerHolder.clear()
