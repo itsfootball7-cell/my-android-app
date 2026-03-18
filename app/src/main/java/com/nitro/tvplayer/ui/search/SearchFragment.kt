@@ -1,114 +1,219 @@
-<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/bg_primary">
+package com.nitro.tvplayer.ui.search
 
-    <!-- Search Bar -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="12dp"
-        android:gravity="center_vertical"
-        android:background="@color/bg_header">
+import android.content.Intent
+import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.nitro.tvplayer.databinding.FragmentSearchBinding
+import com.nitro.tvplayer.ui.livetv.LiveTvViewModel
+import com.nitro.tvplayer.ui.movies.MoviesViewModel
+import com.nitro.tvplayer.ui.player.PlayerActivity
+import com.nitro.tvplayer.ui.series.SeriesViewModel
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔍"
-            android:textSize="18sp"
-            android:layout_marginEnd="10dp"/>
+@AndroidEntryPoint
+class SearchFragment : Fragment() {
 
-        <EditText
-            android:id="@+id/etSearch"
-            android:layout_width="0dp"
-            android:layout_height="40dp"
-            android:layout_weight="1"
-            android:hint="Search channels, movies, series..."
-            android:textColorHint="#40FFFFFF"
-            android:textColor="#FFFFFF"
-            android:textSize="14sp"
-            android:background="@drawable/input_bg"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:imeOptions="actionSearch"
-            android:inputType="text"
-            android:singleLine="true"/>
+    private val liveTvViewModel: LiveTvViewModel by activityViewModels()
+    private val moviesViewModel: MoviesViewModel  by activityViewModels()
+    private val seriesViewModel: SeriesViewModel  by activityViewModels()
 
-        <TextView
-            android:id="@+id/btnClear"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:text="✕"
-            android:textColor="#80FFFFFF"
-            android:textSize="16sp"
-            android:gravity="center"
-            android:layout_marginStart="8dp"/>
+    private var _binding: FragmentSearchBinding? = null
+    private val binding get() = _binding!!
 
-    </LinearLayout>
+    private lateinit var resultsAdapter: SearchResultsAdapter
+    private var searchJob: Job? = null
+    private val scope = MainScope()
 
-    <!-- Result count -->
-    <TextView
-        android:id="@+id/tvResultCount"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textColor="#80FFFFFF"
-        android:textSize="11sp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="4dp"
-        android:visibility="gone"/>
+    var onSeriesSelected: ((Int) -> Unit)? = null
 
-    <!-- Loading -->
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:layout_marginTop="40dp"
-        android:indeterminateTint="#FFB300"
-        android:visibility="gone"/>
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
+        _binding = FragmentSearchBinding.inflate(inflater, container, false)
+        return binding.root
+    }
 
-    <!-- Results list -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvResults"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:clipToPadding="false"
-        android:padding="8dp"
-        android:visibility="gone"/>
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        setupAdapter()
+        setupSearch()
+        showEmptyState()
+    }
 
-    <!-- Empty / hint state -->
-    <LinearLayout
-        android:id="@+id/emptyState"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="32dp">
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (!hidden) {
+            binding.etSearch.requestFocus()
+            showEmptyState()
+        } else {
+            binding.etSearch.setText("")
+        }
+    }
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="🔍"
-            android:textSize="48sp"
-            android:layout_marginBottom="16dp"/>
+    private fun setupAdapter() {
+        resultsAdapter = SearchResultsAdapter { result ->
+            when (result.type) {
+                "live" -> {
+                    val streams   = liveTvViewModel.getAllStreams()
+                    val index     = streams.indexOfFirst { it.streamId == result.id }
+                    val urls      = ArrayList(streams.map { liveTvViewModel.buildStreamUrl(it.streamId) })
+                    val names     = ArrayList(streams.map { it.name })
+                    val sIds      = ArrayList(streams.map { it.streamId })
+                    val iconsList = ArrayList(streams.map { it.streamIcon ?: "" })
+                    startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
+                        putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
+                        putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
+                        putIntegerArrayListExtra(PlayerActivity.EXTRA_STREAM_IDS, sIds)
+                        putStringArrayListExtra(PlayerActivity.EXTRA_ICONS, iconsList)
+                        putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
+                        putExtra(PlayerActivity.EXTRA_TYPE, "live")
+                    })
+                }
+                "movie" -> {
+                    startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
+                        putExtra(PlayerActivity.EXTRA_URL,   result.streamUrl)
+                        putExtra(PlayerActivity.EXTRA_TITLE, result.name)
+                        putExtra(PlayerActivity.EXTRA_TYPE,  "movie")
+                        putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
+                            arrayListOf("movie_${result.id}"))
+                        putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,
+                            arrayListOf(result.icon ?: ""))
+                    })
+                }
+                "series" -> {
+                    onSeriesSelected?.invoke(result.id)
+                }
+            }
+        }
 
-        <TextView
-            android:id="@+id/tvNoResults"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Search across Live TV, Movies and Series"
-            android:textColor="#80FFFFFF"
-            android:textSize="14sp"
-            android:gravity="center"/>
+        binding.rvResults.apply {
+            layoutManager = LinearLayoutManager(requireContext())
+            adapter = resultsAdapter
+        }
+    }
 
-    </LinearLayout>
+    private fun setupSearch() {
+        binding.etSearch.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                val query = s?.toString()?.trim() ?: ""
+                searchJob?.cancel()
+                if (query.length < 2) {
+                    if (query.isEmpty()) showEmptyState()
+                    return
+                }
+                searchJob = scope.launch {
+                    delay(300)
+                    if (isAdded) performSearch(query)
+                }
+            }
+        })
 
-</LinearLayout>
+        binding.btnClear.setOnClickListener {
+            binding.etSearch.setText("")
+            showEmptyState()
+        }
+    }
+
+    private fun performSearch(query: String) {
+        val b = _binding ?: return
+        b.progressBar.visibility = View.VISIBLE
+        b.rvResults.visibility   = View.GONE
+        b.emptyState.visibility  = View.GONE
+
+        val results = mutableListOf<SearchResult>()
+
+        // Live TV
+        liveTvViewModel.getAllStreams()
+            .filter { it.name.contains(query, ignoreCase = true) }
+            .take(20)
+            .mapTo(results) { stream ->
+                SearchResult(
+                    id        = stream.streamId,
+                    name      = stream.name,
+                    icon      = stream.streamIcon,
+                    type      = "live",
+                    typeLabel = "Live TV",
+                    streamUrl = liveTvViewModel.buildStreamUrl(stream.streamId)
+                )
+            }
+
+        // Movies
+        moviesViewModel.getAllMovies()
+            .filter { it.name.contains(query, ignoreCase = true) }
+            .take(20)
+            .mapTo(results) { movie ->
+                SearchResult(
+                    id        = movie.streamId,
+                    name      = movie.name,
+                    icon      = movie.streamIcon,
+                    type      = "movie",
+                    typeLabel = "Movie",
+                    streamUrl = moviesViewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4"),
+                    year      = movie.releaseDate,
+                    rating    = movie.rating5 ?: movie.rating
+                )
+            }
+
+        // Series
+        seriesViewModel.getAllSeries()
+            .filter { it.name.contains(query, ignoreCase = true) }
+            .take(20)
+            .mapTo(results) { series ->
+                SearchResult(
+                    id        = series.seriesId,
+                    name      = series.name,
+                    icon      = series.cover,
+                    type      = "series",
+                    typeLabel = "Series",
+                    streamUrl = "",
+                    year      = series.releaseDate,
+                    rating    = series.rating5 ?: series.rating
+                )
+            }
+
+        val b2 = _binding ?: return
+        b2.progressBar.visibility = View.GONE
+
+        if (results.isEmpty()) {
+            b2.tvNoResults.text    = "No results for \"$query\""
+            b2.emptyState.visibility = View.VISIBLE
+            b2.rvResults.visibility  = View.GONE
+        } else {
+            b2.tvResultCount.text    = "${results.size} results for \"$query\""
+            b2.tvResultCount.visibility = View.VISIBLE
+            resultsAdapter.submitList(results)
+            b2.rvResults.visibility  = View.VISIBLE
+            b2.emptyState.visibility = View.GONE
+        }
+    }
+
+    private fun showEmptyState() {
+        val b = _binding ?: return
+        b.progressBar.visibility    = View.GONE
+        b.rvResults.visibility      = View.GONE
+        b.tvResultCount.visibility  = View.GONE
+        b.emptyState.visibility     = View.VISIBLE
+        b.tvNoResults.text          = "Search across Live TV, Movies and Series"
+        resultsAdapter.submitList(emptyList())
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        searchJob?.cancel()
+        _binding = null
+    }
+}
