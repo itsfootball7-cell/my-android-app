@@ -6,8 +6,8 @@ import com.nitro.tvplayer.data.model.Category
 import com.nitro.tvplayer.data.model.VodStream
 import com.nitro.tvplayer.data.repository.ContentRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -16,40 +16,61 @@ class MoviesViewModel @Inject constructor(
     private val repo: ContentRepository
 ) : ViewModel() {
 
-    val categories   = MutableStateFlow<List<Category>>(emptyList())
-    val movies       = MutableStateFlow<List<VodStream>>(emptyList())
+    val categories    = MutableStateFlow<List<Category>>(emptyList())
+    val movies        = MutableStateFlow<List<VodStream>>(emptyList())
     val selectedMovie = MutableStateFlow<VodStream?>(null)
-    val loading      = MutableStateFlow(false)
-    val error: StateFlow<String?> get() = _error
-    private val _error = MutableStateFlow<String?>(null)
+    val loading       = MutableStateFlow(false)
+    val error         = MutableStateFlow<String?>(null)
+
     private val allMovies = MutableStateFlow<List<VodStream>>(emptyList())
+    private var dataLoaded = false
 
     init { loadAll() }
 
     fun loadAll() {
+        if (dataLoaded) return
         viewModelScope.launch {
             loading.value = true
-            repo.getVodCategories().onSuccess {
-                categories.value = listOf(Category("", "All Movies", 0)) + it
+            error.value   = null
+            try {
+                // ── Parallel load ──
+                val catsDeferred   = async { repo.getVodCategories() }
+                val moviesDeferred = async { repo.getVodStreams() }
+
+                catsDeferred.await().onSuccess { cats ->
+                    categories.value = listOf(Category("", "All Movies", 0)) + cats
+                }
+
+                moviesDeferred.await().onSuccess { list ->
+                    allMovies.value = list
+                    movies.value    = list
+                    if (list.isNotEmpty()) selectedMovie.value = list.first()
+                    dataLoaded = true
+                }.onFailure { e ->
+                    error.value = e.message ?: "Failed to load movies"
+                }
+            } catch (e: Exception) {
+                error.value = e.message ?: "Unexpected error"
+            } finally {
+                loading.value = false
             }
-            repo.getVodStreams().onSuccess {
-                allMovies.value = it
-                movies.value = it
-                if (it.isNotEmpty()) selectedMovie.value = it.first()
-            }.onFailure { _error.value = it.message }
-            loading.value = false
         }
     }
 
     fun filterByCategory(categoryId: String) {
         viewModelScope.launch {
             loading.value = true
-            if (categoryId.isEmpty()) {
-                movies.value = allMovies.value
-            } else {
-                repo.getVodStreams(categoryId).onSuccess { movies.value = it }
+            try {
+                if (categoryId.isEmpty()) {
+                    movies.value = allMovies.value
+                } else {
+                    repo.getVodStreams(categoryId).onSuccess { movies.value = it }
+                }
+            } catch (e: Exception) {
+                error.value = e.message
+            } finally {
+                loading.value = false
             }
-            loading.value = false
         }
     }
 
