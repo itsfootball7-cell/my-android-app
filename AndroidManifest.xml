@@ -38,9 +38,11 @@
 
         <activity
             android:name=".ui.player.PlayerActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
             android:screenOrientation="landscape"
-            android:theme="@style/Theme.NitroTVPlayer.Player"/>
+            android:supportsPictureInPicture="true"
+            android:theme="@style/Theme.NitroTVPlayer.Player"
+            android:launchMode="singleTop"/>
 
     </application>
 
