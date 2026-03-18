@@ -15,12 +15,13 @@
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config">
 
-        <!-- Splash -->
+        <!-- Splash — always the LAUNCHER, clears stack -->
         <activity
             android:name=".ui.splash.SplashActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize"
-            android:theme="@style/Theme.NitroTVPlayer.Splash">
+            android:theme="@style/Theme.NitroTVPlayer.Splash"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -31,20 +32,26 @@
         <activity
             android:name=".ui.login.LoginActivity"
             android:configChanges="orientation|screenSize"
-            android:windowSoftInputMode="adjustResize"/>
+            android:windowSoftInputMode="adjustResize"
+            android:launchMode="singleTop"/>
 
-        <!-- Home (landscape) -->
+        <!-- Home — landscape, stays alive -->
         <activity
             android:name=".ui.home.HomeActivity"
             android:configChanges="orientation|screenSize|keyboardHidden"
-            android:screenOrientation="landscape"/>
+            android:screenOrientation="landscape"
+            android:launchMode="singleTop"/>
 
-        <!-- Player — with PiP support -->
+        <!-- Player — PiP enabled, excluded from recents task stack
+             excludeFromRecents prevents it from appearing on app relaunch -->
         <activity
             android:name=".ui.player.PlayerActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
+            android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout"
             android:screenOrientation="landscape"
             android:supportsPictureInPicture="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="false"
             android:theme="@style/Theme.NitroTVPlayer.Player"/>
 
     </application>
