@@ -10,10 +10,9 @@ class PlayerHolder @Inject constructor() {
     var currentUrl: String? = null
     var currentChannelIcon: String? = null
     var isInFullscreen: Boolean = false
-    var isInPip: Boolean = false       // true when PiP window is active
+    var isInPip: Boolean = false
 
-    /** Fully stop and release the preview player */
-    fun stopAndRelease() {
+    fun release() {
         player?.stop()
         player?.release()
         player             = null
@@ -23,7 +22,6 @@ class PlayerHolder @Inject constructor() {
         isInPip            = false
     }
 
-    /** Just clear metadata without releasing (used on logout/reset) */
     fun clear() {
         player             = null
         currentUrl         = null
