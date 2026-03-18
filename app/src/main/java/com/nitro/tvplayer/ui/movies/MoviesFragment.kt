@@ -8,8 +8,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.nitro.tvplayer.databinding.FragmentMoviesBinding
@@ -22,9 +24,11 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class MoviesFragment : Fragment() {
 
+    private val viewModel: MoviesViewModel by activityViewModels()
+
     private var _binding: FragmentMoviesBinding? = null
     private val binding get() = _binding!!
-    private val viewModel: MoviesViewModel by viewModels()
+
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var moviesAdapter: MoviesAdapter
 
@@ -59,7 +63,6 @@ class MoviesFragment : Fragment() {
         binding.btnPlay.setOnClickListener {
             val movie = viewModel.selectedMovie.value ?: return@setOnClickListener
             val url   = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
-            // Use streamId as content ID for resume persistence
             val contentId = "movie_${movie.streamId}"
 
             startActivity(
@@ -74,26 +77,40 @@ class MoviesFragment : Fragment() {
     }
 
     private fun observeViewModel() {
-        lifecycleScope.launch {
-            viewModel.categories.collect { categoryAdapter.submitList(it) }
-        }
-        lifecycleScope.launch {
-            viewModel.movies.collect { moviesAdapter.submitList(it) }
-        }
-        lifecycleScope.launch {
-            viewModel.selectedMovie.collect { movie ->
-                movie?.let {
-                    binding.tvMovieTitle.text  = it.name
-                    binding.tvMovieYear.text   = it.releaseDate ?: ""
-                    binding.tvMovieRating.text = "★ ${it.rating5 ?: it.rating ?: "N/A"}"
-                    binding.tvMoviePlot.text   = it.plot ?: "No description available."
-                    binding.ivMoviePoster.loadUrl(it.streamIcon)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+
+                launch {
+                    viewModel.categories.collect { cats ->
+                        _binding?.let { categoryAdapter.submitList(cats) }
+                    }
                 }
-            }
-        }
-        lifecycleScope.launch {
-            viewModel.loading.collect {
-                binding.progressBar.visibility = if (it) View.VISIBLE else View.GONE
+
+                launch {
+                    viewModel.movies.collect { movies ->
+                        _binding?.let { moviesAdapter.submitList(movies) }
+                    }
+                }
+
+                launch {
+                    viewModel.selectedMovie.collect { movie ->
+                        movie ?: return@collect
+                        _binding?.let { b ->
+                            b.tvMovieTitle.text  = movie.name
+                            b.tvMovieYear.text   = movie.releaseDate ?: ""
+                            b.tvMovieRating.text = "★ ${movie.rating5 ?: movie.rating ?: "N/A"}"
+                            b.tvMoviePlot.text   = movie.plot ?: "No description available."
+                            b.ivMoviePoster.loadUrl(movie.streamIcon)
+                        }
+                    }
+                }
+
+                launch {
+                    viewModel.loading.collect { loading ->
+                        _binding?.progressBar?.visibility =
+                            if (loading) View.VISIBLE else View.GONE
+                    }
+                }
             }
         }
     }
@@ -106,5 +123,8 @@ class MoviesFragment : Fragment() {
         })
     }
 
-    override fun onDestroyView() { super.onDestroyView(); _binding = null }
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
 }
