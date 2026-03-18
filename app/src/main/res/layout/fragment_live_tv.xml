@@ -8,7 +8,7 @@
 
     <!-- LEFT: Categories -->
     <LinearLayout
-        android:layout_width="140dp"
+        android:layout_width="150dp"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="@color/bg_sidebar">
@@ -36,9 +36,9 @@
     <View android:layout_width="1dp" android:layout_height="match_parent"
         android:background="#14FFFFFF"/>
 
-    <!-- MIDDLE: Streams -->
+    <!-- MIDDLE: Channels -->
     <LinearLayout
-        android:layout_width="200dp"
+        android:layout_width="210dp"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="@color/bg_middle">
@@ -56,6 +56,23 @@
             android:paddingStart="10dp"
             android:paddingEnd="10dp"/>
 
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            android:indeterminateTint="@color/accent_orange"/>
+
+        <TextView
+            android:id="@+id/tvError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFCF6679"
+            android:textSize="11sp"
+            android:padding="8dp"
+            android:visibility="gone"/>
+
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvStreams"
             android:layout_width="match_parent"
@@ -69,7 +86,7 @@
     <View android:layout_width="1dp" android:layout_height="match_parent"
         android:background="#14FFFFFF"/>
 
-    <!-- RIGHT: Preview + Info -->
+    <!-- RIGHT: Preview Player + Info -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
@@ -77,82 +94,119 @@
         android:orientation="vertical"
         android:padding="10dp">
 
-        <!-- Video Preview Placeholder -->
+        <!-- ══ PREVIEW PLAYER BOX ══
+             Tap channel → plays here
+             Tap this box → goes fullscreen  -->
         <FrameLayout
+            android:id="@+id/previewContainer"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:background="@drawable/player_preview_bg">
+            android:background="@drawable/player_preview_bg"
+            android:clickable="true"
+            android:focusable="true">
 
+            <!-- ExoPlayer mini view -->
+            <androidx.media3.ui.PlayerView
+                android:id="@+id/previewPlayerView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone"/>
+
+            <!-- Channel logo (shown before tap) -->
             <ImageView
                 android:id="@+id/ivChannelLogo"
-                android:layout_width="64dp"
-                android:layout_height="64dp"
+                android:layout_width="72dp"
+                android:layout_height="72dp"
                 android:layout_gravity="center"
                 android:scaleType="fitCenter"/>
 
-            <ProgressBar
-                android:id="@+id/progressBar"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:visibility="gone"
-                android:indeterminateTint="@color/accent_orange"/>
-
-            <TextView
-                android:id="@+id/tvError"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="center"
-                android:textColor="#FFCF6679"
-                android:textSize="11sp"
-                android:visibility="gone"/>
-
-            <!-- Play button overlay -->
+            <!-- "Tap to watch" hint shown when preview is playing -->
             <LinearLayout
+                android:id="@+id/tvClickToWatch"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom"
-                android:background="#80000000"
+                android:background="#CC000000"
                 android:orientation="horizontal"
-                android:padding="10dp"
-                android:gravity="center_vertical">
+                android:padding="8dp"
+                android:gravity="center_vertical"
+                android:visibility="gone">
 
                 <TextView
-                    android:id="@+id/tvChannelName"
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:textColor="@color/white"
-                    android:textSize="13sp"
-                    android:textStyle="bold"/>
+                    android:id="@+id/tvChannelName"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end"/>
 
                 <TextView
                     android:id="@+id/tvLiveBadge"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="● LIVE"
-                    android:textColor="@color/white"
+                    android:textColor="#FFFFFF"
                     android:textSize="9sp"
                     android:background="@drawable/badge_live"
                     android:paddingStart="8dp"
                     android:paddingEnd="8dp"
                     android:paddingTop="3dp"
                     android:paddingBottom="3dp"
-                    android:layout_marginEnd="8dp"
+                    android:layout_marginStart="8dp"
                     android:visibility="gone"/>
 
-                <Button
-                    android:id="@+id/btnPlay"
-                    android:layout_width="100dp"
-                    android:layout_height="36dp"
-                    android:text="▶ Watch"
-                    android:textColor="@color/white"
-                    android:textSize="12sp"
-                    android:background="@drawable/btn_primary"/>
+            </LinearLayout>
+
+            <!-- Tap hint icon when nothing playing yet -->
+            <LinearLayout
+                android:id="@+id/tapHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="▶"
+                    android:textColor="#33FFFFFF"
+                    android:textSize="36sp"
+                    android:layout_marginBottom="8dp"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Select a channel"
+                    android:textColor="#33FFFFFF"
+                    android:textSize="11sp"/>
 
             </LinearLayout>
+
         </FrameLayout>
+
+        <!-- Channel name below preview (no WATCH button) -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:id="@+id/tvChannelInfoBottom"
+                android:textColor="#99FFFFFF"
+                android:textSize="11sp"
+                android:text="Tap a channel to preview • Tap preview to watch"/>
+
+        </LinearLayout>
 
     </LinearLayout>
 
