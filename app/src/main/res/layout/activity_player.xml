@@ -12,7 +12,7 @@
         android:layout_height="match_parent"
         android:keepScreenOn="true"/>
 
-    <!-- Full screen touch overlay -->
+    <!-- Full-screen touch overlay (behind everything except controls) -->
     <View
         android:id="@+id/touchOverlay"
         android:layout_width="match_parent"
@@ -21,7 +21,7 @@
         android:clickable="true"
         android:focusable="true"/>
 
-    <!-- Buffering -->
+    <!-- Buffering spinner -->
     <ProgressBar
         android:id="@+id/progressBar"
         android:layout_width="52dp"
@@ -30,7 +30,7 @@
         android:visibility="gone"
         android:indeterminateTint="#FFB300"/>
 
-    <!-- Error -->
+    <!-- Error message -->
     <TextView
         android:id="@+id/tvError"
         android:layout_width="wrap_content"
@@ -41,6 +41,42 @@
         android:visibility="gone"
         android:padding="12dp"
         android:background="#90000000"/>
+
+    <!-- ══════════════════════════════════════════════════════
+         CHANNEL INFO — always visible, top-left corner
+    ══════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="56dp"
+        android:layout_marginStart="12dp"
+        android:orientation="horizontal"
+        android:background="#80000000"
+        android:paddingStart="10dp"
+        android:paddingEnd="10dp"
+        android:paddingTop="5dp"
+        android:paddingBottom="5dp">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● "
+            android:textColor="#FF4500"
+            android:textSize="10sp"/>
+
+        <TextView
+            android:id="@+id/tvChannelName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:maxWidth="300dp"/>
+
+    </LinearLayout>
 
     <!-- Nitro Watermark -->
     <LinearLayout
@@ -67,7 +103,9 @@
             android:layout_marginStart="2dp"/>
     </LinearLayout>
 
-    <!-- ═══ LEFT BAR CONTAINER: Brightness (fades in/out) ═══ -->
+    <!-- ══════════════════════════════════════════════════════
+         LEFT BAR — Brightness (fades in/out)
+    ══════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/leftBarContainer"
         android:layout_width="32dp"
@@ -101,7 +139,6 @@
                 android:background="#4FC3F7"/>
         </FrameLayout>
 
-        <!-- Hidden tracker -->
         <ProgressBar
             android:id="@+id/leftBrightnessBar"
             style="@android:style/Widget.ProgressBar.Horizontal"
@@ -122,7 +159,9 @@
 
     </LinearLayout>
 
-    <!-- ═══ RIGHT BAR CONTAINER: Volume (fades in/out) ═══ -->
+    <!-- ══════════════════════════════════════════════════════
+         RIGHT BAR — Volume (fades in/out)
+    ══════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/rightBarContainer"
         android:layout_width="32dp"
@@ -155,7 +194,6 @@
                 android:background="#FFB300"/>
         </FrameLayout>
 
-        <!-- Hidden tracker -->
         <ProgressBar
             android:id="@+id/rightVolumeBar"
             style="@android:style/Widget.ProgressBar.Horizontal"
@@ -176,9 +214,9 @@
 
     </LinearLayout>
 
-    <!-- ═══ SWIPE POPUP INDICATORS ═══ -->
-
-    <!-- Volume popup (right side, center) -->
+    <!-- ══════════════════════════════════════════════════════
+         SWIPE INDICATORS (shown while swiping)
+    ══════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/volumeIndicator"
         android:layout_width="110dp"
@@ -190,7 +228,6 @@
         android:background="#CC000000"
         android:padding="10dp"
         android:visibility="gone">
-
         <TextView
             android:id="@+id/tvVolumeIndicator"
             android:layout_width="wrap_content"
@@ -199,7 +236,6 @@
             android:textColor="#FFB300"
             android:textSize="15sp"
             android:textStyle="bold"/>
-
         <ProgressBar
             android:id="@+id/volumeBar"
             style="@android:style/Widget.ProgressBar.Horizontal"
@@ -209,10 +245,8 @@
             android:progress="50"
             android:progressTint="#FFB300"
             android:layout_marginTop="6dp"/>
-
     </LinearLayout>
 
-    <!-- Brightness popup (left side, center) -->
     <LinearLayout
         android:id="@+id/brightnessIndicator"
         android:layout_width="110dp"
@@ -224,7 +258,6 @@
         android:background="#CC000000"
         android:padding="10dp"
         android:visibility="gone">
-
         <TextView
             android:id="@+id/tvBrightnessIndicator"
             android:layout_width="wrap_content"
@@ -233,7 +266,6 @@
             android:textColor="#4FC3F7"
             android:textSize="15sp"
             android:textStyle="bold"/>
-
         <ProgressBar
             android:id="@+id/brightnessBar"
             style="@android:style/Widget.ProgressBar.Horizontal"
@@ -243,10 +275,12 @@
             android:progress="50"
             android:progressTint="#4FC3F7"
             android:layout_marginTop="6dp"/>
-
     </LinearLayout>
 
-    <!-- ═══ TOP BAR (fades in/out) ═══ -->
+    <!-- ══════════════════════════════════════════════════════
+         TOP BAR — Back | Title | Aspect Ratio | CC
+         (Quality button REMOVED)
+    ══════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
@@ -281,7 +315,7 @@
             android:maxLines="1"
             android:ellipsize="end"/>
 
-        <!-- Aspect Ratio button -->
+        <!-- Aspect Ratio — tap to cycle Fit/Fill/Zoom/FixW/FixH -->
         <TextView
             android:id="@+id/btnAspectRatio"
             android:layout_width="wrap_content"
@@ -295,21 +329,7 @@
             android:background="@drawable/btn_player_control"
             android:layout_marginStart="8dp"/>
 
-        <!-- Quality/Resolution button -->
-        <TextView
-            android:id="@+id/btnResolution"
-            android:layout_width="wrap_content"
-            android:layout_height="30dp"
-            android:text="⚙ Quality"
-            android:textColor="#FFFFFF"
-            android:textSize="11sp"
-            android:gravity="center"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"
-            android:background="@drawable/btn_player_control"
-            android:layout_marginStart="8dp"/>
-
-        <!-- CC Subtitles button -->
+        <!-- CC / Subtitles -->
         <TextView
             android:id="@+id/btnSubtitles"
             android:layout_width="wrap_content"
@@ -326,11 +346,13 @@
 
     </LinearLayout>
 
-    <!-- ═══ BOTTOM BAR (fades in/out) ═══ -->
+    <!-- ══════════════════════════════════════════════════════
+         BOTTOM BAR — Prev | Play/Pause | Next | Channel | LIVE
+    ══════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/bottomBar"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="56dp"
         android:layout_gravity="bottom"
         android:background="#CC000000"
         android:orientation="horizontal"
@@ -340,18 +362,43 @@
         android:visibility="invisible"
         android:alpha="0">
 
-        <!-- Play/Pause -->
+        <!-- Previous channel/episode -->
         <TextView
-            android:id="@+id/btnPlayPause"
+            android:id="@+id/btnPrev"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:text="⏸"
+            android:text="⏮"
             android:textSize="20sp"
             android:gravity="center"
             android:textColor="#FFFFFF"
-            android:layout_marginEnd="16dp"/>
+            android:alpha="0.3"
+            android:layout_marginEnd="4dp"/>
 
-        <!-- Program info -->
+        <!-- Play / Pause -->
+        <TextView
+            android:id="@+id/btnPlayPause"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:text="⏸"
+            android:textSize="22sp"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/btn_play_circle"
+            android:layout_marginEnd="4dp"/>
+
+        <!-- Next channel/episode -->
+        <TextView
+            android:id="@+id/btnNext"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:text="⏭"
+            android:textSize="20sp"
+            android:gravity="center"
+            android:textColor="#FFFFFF"
+            android:alpha="1.0"
+            android:layout_marginEnd="12dp"/>
+
+        <!-- Channel/episode info -->
         <TextView
             android:id="@+id/tvProgramInfo"
             android:layout_width="0dp"
