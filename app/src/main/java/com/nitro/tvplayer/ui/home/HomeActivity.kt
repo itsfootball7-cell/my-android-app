@@ -8,6 +8,7 @@ import com.nitro.tvplayer.R
 import com.nitro.tvplayer.databinding.ActivityHomeBinding
 import com.nitro.tvplayer.ui.livetv.LiveTvFragment
 import com.nitro.tvplayer.ui.movies.MoviesFragment
+import com.nitro.tvplayer.ui.search.SearchFragment
 import com.nitro.tvplayer.ui.series.SeriesFragment
 import com.nitro.tvplayer.ui.settings.SettingsFragment
 import com.nitro.tvplayer.utils.PrefsManager
@@ -21,12 +22,13 @@ class HomeActivity : AppCompatActivity() {
     @Inject lateinit var prefs: PrefsManager
 
     private val fragmentCache = mutableMapOf<String, Fragment>()
-    private var activeTag: String = TAB_LIVE
+    private var activeTag = TAB_LIVE
 
     companion object {
         const val TAB_LIVE     = "live"
         const val TAB_MOVIES   = "movies"
         const val TAB_SERIES   = "series"
+        const val TAB_SEARCH   = "search"
         const val TAB_SETTINGS = "settings"
     }
 
@@ -38,10 +40,8 @@ class HomeActivity : AppCompatActivity() {
 
         if (savedInstanceState != null) {
             activeTag = savedInstanceState.getString("active_tab", TAB_LIVE)
-            listOf(TAB_LIVE, TAB_MOVIES, TAB_SERIES, TAB_SETTINGS).forEach { tag ->
-                supportFragmentManager.findFragmentByTag(tag)?.let {
-                    fragmentCache[tag] = it
-                }
+            listOf(TAB_LIVE, TAB_MOVIES, TAB_SERIES, TAB_SEARCH, TAB_SETTINGS).forEach { tag ->
+                supportFragmentManager.findFragmentByTag(tag)?.let { fragmentCache[tag] = it }
             }
         }
 
@@ -60,6 +60,7 @@ class HomeActivity : AppCompatActivity() {
             binding.tabLive     to TAB_LIVE,
             binding.tabMovies   to TAB_MOVIES,
             binding.tabSeries   to TAB_SERIES,
+            binding.tabSearch   to TAB_SEARCH,
             binding.tabSettings to TAB_SETTINGS
         )
         tabs.forEach { (tab, tag) ->
@@ -73,27 +74,28 @@ class HomeActivity : AppCompatActivity() {
             TAB_LIVE     -> binding.tabLive.isSelected     = true
             TAB_MOVIES   -> binding.tabMovies.isSelected   = true
             TAB_SERIES   -> binding.tabSeries.isSelected   = true
+            TAB_SEARCH   -> binding.tabSearch.isSelected   = true
             TAB_SETTINGS -> binding.tabSettings.isSelected = true
         }
     }
 
     private fun showFragment(tag: String) {
         activeTag = tag
-        val transaction    = supportFragmentManager.beginTransaction()
-        transaction.setCustomAnimations(android.R.anim.fade_in, android.R.anim.fade_out)
+        val tx             = supportFragmentManager.beginTransaction()
         val targetFragment = fragmentCache.getOrPut(tag) { createFragment(tag) }
-        fragmentCache.forEach { (t, fragment) ->
-            if (t != tag && fragment.isAdded) transaction.hide(fragment)
+        fragmentCache.forEach { (t, f) ->
+            if (t != tag && f.isAdded) tx.hide(f)
         }
-        if (!targetFragment.isAdded) transaction.add(R.id.fragmentContainer, targetFragment, tag)
-        else transaction.show(targetFragment)
-        transaction.commitAllowingStateLoss()
+        if (!targetFragment.isAdded) tx.add(R.id.fragmentContainer, targetFragment, tag)
+        else tx.show(targetFragment)
+        tx.commitAllowingStateLoss()
     }
 
     private fun createFragment(tag: String): Fragment = when (tag) {
         TAB_LIVE     -> LiveTvFragment()
         TAB_MOVIES   -> MoviesFragment()
         TAB_SERIES   -> SeriesFragment()
+        TAB_SEARCH   -> SearchFragment()
         TAB_SETTINGS -> SettingsFragment()
         else         -> LiveTvFragment()
     }
