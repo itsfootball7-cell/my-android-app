@@ -7,6 +7,7 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -17,14 +18,19 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.nitro.tvplayer.databinding.FragmentMoviesBinding
 import com.nitro.tvplayer.ui.livetv.CategoryAdapter
 import com.nitro.tvplayer.ui.player.PlayerActivity
+import com.nitro.tvplayer.utils.FavouriteItem
+import com.nitro.tvplayer.utils.FavouritesManager
 import com.nitro.tvplayer.utils.loadUrl
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MoviesFragment : Fragment() {
 
     private val viewModel: MoviesViewModel by activityViewModels()
+    @Inject lateinit var favouritesManager: FavouritesManager
+
     private var _binding: FragmentMoviesBinding? = null
     private val binding get() = _binding!!
     private lateinit var categoryAdapter: CategoryAdapter
@@ -46,18 +52,39 @@ class MoviesFragment : Fragment() {
     }
 
     private fun setupAdapters() {
-        categoryAdapter = CategoryAdapter { category ->
-            viewModel.filterByCategory(category)
-        }
+        categoryAdapter = CategoryAdapter { viewModel.filterByCategory(it) }
         binding.rvCategories.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = categoryAdapter
         }
-        moviesAdapter = MoviesAdapter { viewModel.selectMovie(it) }
+
+        moviesAdapter = MoviesAdapter(
+            onClick = { viewModel.selectMovie(it) },
+            onLongPress = { movie ->
+                // ── Long press → Add to Favourites ──
+                val url = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
+                val favItem = FavouriteItem(
+                    id         = "movie_${movie.streamId}",
+                    name       = movie.name,
+                    icon       = movie.streamIcon,
+                    type       = "movie",
+                    streamUrl  = url,
+                    categoryId = movie.categoryId,
+                    extra      = movie.extension
+                )
+                val added = favouritesManager.toggle(favItem)
+                val msg = if (added)
+                    "⭐ \"${movie.name}\" added to Favourites"
+                else
+                    "\"${movie.name}\" removed from Favourites"
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+            }
+        )
         binding.rvMovies.apply {
             layoutManager = GridLayoutManager(requireContext(), 3)
             adapter = moviesAdapter
         }
+
         binding.btnPlay.setOnClickListener {
             val movie     = viewModel.selectedMovie.value ?: return@setOnClickListener
             val url       = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
