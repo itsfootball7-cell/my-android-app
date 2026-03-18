@@ -75,21 +75,24 @@ class LiveTvFragment : Fragment() {
 
     private fun setupPreviewClickListener() {
         val goFullscreen: () -> Unit = goFullscreen@{
-            val stream = viewModel.selectedStream.value ?: return@goFullscreen
+            val stream  = viewModel.selectedStream.value ?: return@goFullscreen
             val streams = viewModel.streams.value
             val index   = streams.indexOfFirst { it.streamId == stream.streamId }
             val urls    = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
             val names   = ArrayList(streams.map { it.name })
+            // Stream IDs as integers for EPG lookup
             val sIds    = ArrayList(streams.map { it.streamId })
 
-            playerHolder.isInFullscreen = true
+            playerHolder.isInFullscreen  = true
             binding.previewPlayerView.player = null
 
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
                     putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
                     putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
-                    putIntegerArrayListExtra(PlayerActivity.EXTRA_STREAM_IDS, sIds)
+                    // Use string literal to avoid unresolved reference if PlayerActivity
+                    // hasn't been compiled yet in the same build pass
+                    putIntegerArrayListExtra("extra_stream_ids", sIds)
                     putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
                     putExtra(PlayerActivity.EXTRA_TYPE, "live")
                     putExtra(PlayerActivity.EXTRA_USE_EXISTING, true)
@@ -176,7 +179,7 @@ class LiveTvFragment : Fragment() {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
-                        // Auto-select first real category (after All + Favourites = index 2)
+                        // Auto-select first real category (index 2 = after All + Favourites)
                         if (cats.size > 2) categoryAdapter.setSelected(2)
                         else if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
                     }
@@ -238,9 +241,7 @@ class LiveTvFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
-        if (!playerHolder.isInFullscreen) {
-            playerHolder.player?.pause()
-        }
+        if (!playerHolder.isInFullscreen) playerHolder.player?.pause()
     }
 
     override fun onDestroyView() {
