@@ -8,8 +8,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.viewModels
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.nitro.tvplayer.databinding.FragmentSeriesBinding
@@ -22,9 +24,11 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class SeriesFragment : Fragment() {
 
+    private val viewModel: SeriesViewModel by activityViewModels()
+
     private var _binding: FragmentSeriesBinding? = null
     private val binding get() = _binding!!
-    private val viewModel: SeriesViewModel by viewModels()
+
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var seriesAdapter: SeriesAdapter
     private lateinit var episodeAdapter: EpisodeAdapter
@@ -67,25 +71,22 @@ class SeriesFragment : Fragment() {
         }
 
         episodeAdapter = EpisodeAdapter { episode ->
-            // Build full episode playlist for current season (enables Prev/Next)
-            val episodes = viewModel.episodes.value
-            val index    = episodes.indexOfFirst { it.id == episode.id }
+            val episodes   = viewModel.episodes.value
+            val index      = episodes.indexOfFirst { it.id == episode.id }
             val seriesName = viewModel.selectedSeries.value?.name ?: ""
-            val season   = viewModel.selectedSeason.value
-
-            val urls = ArrayList(episodes.map {
+            val season     = viewModel.selectedSeason.value
+            val urls       = ArrayList(episodes.map {
                 viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv")
             })
-            val titles = ArrayList(episodes.map {
+            val episodeTitles = ArrayList(episodes.map {
                 "$seriesName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}"
             })
-            // Use episode ID as content ID for resume
             val ids = ArrayList(episodes.map { "ep_${it.id}" })
 
             startActivity(
                 Intent(requireContext(), PlayerActivity::class.java).apply {
                     putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
-                    putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,   titles)
+                    putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,   episodeTitles)
                     putStringArrayListExtra(PlayerActivity.EXTRA_IDS,      ids)
                     putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
                     putExtra(PlayerActivity.EXTRA_TYPE, "series")
@@ -99,24 +100,52 @@ class SeriesFragment : Fragment() {
     }
 
     private fun observeViewModel() {
-        lifecycleScope.launch { viewModel.categories.collect { categoryAdapter.submitList(it) } }
-        lifecycleScope.launch { viewModel.seriesList.collect { seriesAdapter.submitList(it) } }
-        lifecycleScope.launch { viewModel.seasons.collect { seasonAdapter.submitList(it) } }
-        lifecycleScope.launch { viewModel.episodes.collect { episodeAdapter.submitList(it) } }
-        lifecycleScope.launch {
-            viewModel.selectedSeries.collect { series ->
-                series?.let {
-                    binding.tvSeriesTitle.text  = it.name
-                    binding.tvSeriesInfo.text   = "${it.releaseDate ?: ""} • ${it.genre ?: ""}"
-                    binding.tvSeriesRating.text = "★ ${it.rating5 ?: it.rating ?: "N/A"}"
-                    binding.tvSeriesPlot.text   = it.plot ?: "No description available."
-                    binding.ivSeriesCover.loadUrl(it.cover)
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+
+                launch {
+                    viewModel.categories.collect { cats ->
+                        _binding?.let { categoryAdapter.submitList(cats) }
+                    }
                 }
-            }
-        }
-        lifecycleScope.launch {
-            viewModel.loading.collect {
-                binding.progressBar.visibility = if (it) View.VISIBLE else View.GONE
+
+                launch {
+                    viewModel.seriesList.collect { list ->
+                        _binding?.let { seriesAdapter.submitList(list) }
+                    }
+                }
+
+                launch {
+                    viewModel.seasons.collect { seasons ->
+                        _binding?.let { seasonAdapter.submitList(seasons) }
+                    }
+                }
+
+                launch {
+                    viewModel.episodes.collect { eps ->
+                        _binding?.let { episodeAdapter.submitList(eps) }
+                    }
+                }
+
+                launch {
+                    viewModel.selectedSeries.collect { series ->
+                        series ?: return@collect
+                        _binding?.let { b ->
+                            b.tvSeriesTitle.text  = series.name
+                            b.tvSeriesInfo.text   = "${series.releaseDate ?: ""} • ${series.genre ?: ""}"
+                            b.tvSeriesRating.text = "★ ${series.rating5 ?: series.rating ?: "N/A"}"
+                            b.tvSeriesPlot.text   = series.plot ?: "No description available."
+                            b.ivSeriesCover.loadUrl(series.cover)
+                        }
+                    }
+                }
+
+                launch {
+                    viewModel.loading.collect { loading ->
+                        _binding?.progressBar?.visibility =
+                            if (loading) View.VISIBLE else View.GONE
+                    }
+                }
             }
         }
     }
@@ -129,5 +158,8 @@ class SeriesFragment : Fragment() {
         })
     }
 
-    override fun onDestroyView() { super.onDestroyView(); _binding = null }
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
+    }
 }
