@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_primary">
+
+    <!-- Top Navigation Bar -->
+    <LinearLayout
+        android:id="@+id/topNav"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:background="@color/bg_header"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:gravity="center_vertical">
+
+        <!-- Logo -->
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:src="@drawable/ic_launcher"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Nitro"
+            android:textColor="@color/white"
+            android:textSize="16sp"
+            android:textStyle="bold"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tv"
+            android:textColor="@color/accent_orange"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:layout_marginStart="2dp"/>
+
+        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+
+        <!-- Nav Tabs -->
+        <TextView
+            android:id="@+id/tabLive"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="📡  Live TV"
+            android:textColor="#80FFFFFF"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:background="@drawable/tab_selector"/>
+
+        <TextView
+            android:id="@+id/tabMovies"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="🎬  Movies"
+            android:textColor="#80FFFFFF"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:background="@drawable/tab_selector"/>
+
+        <TextView
+            android:id="@+id/tabSeries"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="📺  Series"
+            android:textColor="#80FFFFFF"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:background="@drawable/tab_selector"/>
+
+        <TextView
+            android:id="@+id/tabSettings"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:text="⚙️  Settings"
+            android:textColor="#80FFFFFF"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:background="@drawable/tab_selector"/>
+
+        <Space android:layout_width="0dp" android:layout_height="1dp" android:layout_weight="1"/>
+
+        <!-- User info -->
+        <TextView
+            android:id="@+id/tvUsername"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="● Connected"
+            android:textColor="@color/accent_orange"
+            android:textSize="10sp"/>
+
+    </LinearLayout>
+
+    <!-- Fragment Container -->
+    <FrameLayout
+        android:id="@+id/fragmentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"/>
+
+</LinearLayout>

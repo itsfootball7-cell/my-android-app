@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_primary">#180b53</color>
+    <color name="bg_header">#0f0635</color>
+    <color name="bg_sidebar">#0d0430</color>
+    <color name="bg_middle">#130840</color>
+    <color name="bg_card">#1e1060</color>
+    <color name="accent_orange">#FFB300</color>
+    <color name="accent_red">#FF4500</color>
+    <color name="accent_blue">#4FC3F7</color>
+    <color name="white">#FFFFFF</color>
+    <color name="error_color">#CF6679</color>
+</resources>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.NitroTVPlayer" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/accent_orange</item>
+        <item name="colorPrimaryVariant">@color/bg_primary</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/accent_orange</item>
+        <item name="android:windowBackground">@color/bg_primary</item>
+        <item name="android:statusBarColor">@color/bg_header</item>
+        <item name="android:navigationBarColor">@color/bg_header</item>
+        <item name="editTextStyle">@style/NitroEditText</item>
+    </style>
+
+    <style name="Theme.NitroTVPlayer.Splash" parent="Theme.NitroTVPlayer">
+        <item name="android:windowBackground">@color/bg_primary</item>
+    </style>
+
+    <style name="Theme.NitroTVPlayer.Player" parent="Theme.NitroTVPlayer">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+    </style>
+
+    <style name="NitroEditText" parent="Widget.AppCompat.EditText">
+        <item name="android:textColor">@color/white</item>
+        <item name="android:textColorHint">#66FFFFFF</item>
+        <item name="android:backgroundTint">@color/accent_orange</item>
+    </style>
+
+</resources>
