@@ -54,7 +54,6 @@ class MoviesViewModel @Inject constructor(
                         Category(MOVIE_CAT_RECENTLY_ADDED, "Recently Added",    0)
                     )
                     categories.value = special + catList
-                    // ── Auto-select FIRST REAL category (skip the 4 special ones) ──
                     val firstReal = catList.firstOrNull()
                     if (firstReal != null) selectedCategory.value = firstReal
                 }
@@ -90,14 +89,16 @@ class MoviesViewModel @Inject constructor(
             }
 
             MOVIE_CAT_CONTINUE -> {
-                // Movies with a saved resume position > 5 seconds
-                allMovies.value.filter { movie ->
-                    positionManager.hasResumePoint("movie_${movie.streamId}")
+                // Use WatchedList sorted by most recently watched
+                val watchedItems = positionManager.getWatchedByType("movie")
+                val watchedIds   = watchedItems.mapNotNull {
+                    it.contentId.removePrefix("movie_").toIntOrNull()
                 }
+                val movieMap = allMovies.value.associateBy { it.streamId }
+                watchedIds.mapNotNull { movieMap[it] }
             }
 
             MOVIE_CAT_RECENTLY_ADDED -> {
-                // Sort by added timestamp descending, take 30
                 allMovies.value
                     .sortedByDescending { it.added?.toLongOrNull() ?: 0L }
                     .take(30)
@@ -112,10 +113,7 @@ class MoviesViewModel @Inject constructor(
     fun selectMovie(movie: VodStream) { selectedMovie.value = movie }
 
     fun search(query: String) {
-        if (query.isEmpty()) {
-            filterByCategory(selectedCategory.value ?: return)
-            return
-        }
+        if (query.isEmpty()) { filterByCategory(selectedCategory.value ?: return); return }
         movies.value = allMovies.value.filter { it.name.contains(query, ignoreCase = true) }
     }
 
