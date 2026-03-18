@@ -69,10 +69,8 @@ class SeriesViewModel @Inject constructor(
                         list.filter { it.categoryId == firstCatId }
                     else list
                     dataLoaded = true
-                    // Load info for first series silently
-                    if (seriesList.value.isNotEmpty()) {
+                    if (seriesList.value.isNotEmpty())
                         loadEpisodes(seriesList.value.first(), silent = true)
-                    }
                 }.onFailure { e ->
                     error.value = "Failed to load series: ${e.message}"
                 }
@@ -88,30 +86,25 @@ class SeriesViewModel @Inject constructor(
         selectedCategory.value = category
         val filtered: List<SeriesItem> = when (category.categoryId) {
             SERIES_CAT_ALL -> allSeries.value
-
             SERIES_CAT_FAVOURITES -> {
                 val favIds = favouritesManager.getByType("series")
                     .mapNotNull { it.id.removePrefix("series_").toIntOrNull() }
                 allSeries.value.filter { it.seriesId in favIds }
             }
-
             SERIES_CAT_CONTINUE -> {
                 val watched   = positionManager.getWatchedByType("series")
                 val seriesMap = allSeries.value.associateBy { it.seriesId }
                 watched.mapNotNull { entry ->
-                    // content ID format: "series_ID_ep_EPID"
                     val id = entry.contentId.removePrefix("series_")
                         .substringBefore("_ep_").toIntOrNull()
                     if (id != null) seriesMap[id] else null
                 }.distinctBy { it.seriesId }
             }
-
             SERIES_CAT_RECENTLY_ADDED -> {
                 allSeries.value
                     .sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }
                     .take(30)
             }
-
             else -> allSeries.value.filter { it.categoryId == category.categoryId }
         }
         seriesList.value = filtered
@@ -127,37 +120,27 @@ class SeriesViewModel @Inject constructor(
         viewModelScope.launch {
             selectedSeries.value = series
             if (!silent) loading.value = true
-
-            // Return from cache immediately
             val cached = episodeCache[series.seriesId]
             if (cached != null) {
-                updateEpisodesFromMap(cached)
-                loading.value = false
-                return@launch
+                updateFromMap(cached); loading.value = false; return@launch
             }
-
             try {
                 repo.getSeriesInfo(series.seriesId.toString())
                     .onSuccess { info ->
                         val eps = info.episodes ?: emptyMap()
                         episodeCache[series.seriesId] = eps
-                        updateEpisodesFromMap(eps)
+                        updateFromMap(eps)
                     }
-                    .onFailure {
-                        // Don't crash — show empty episodes
-                        seasons.value  = emptyList()
-                        episodes.value = emptyList()
-                    }
+                    .onFailure { seasons.value = emptyList(); episodes.value = emptyList() }
             } catch (e: Exception) {
-                seasons.value  = emptyList()
-                episodes.value = emptyList()
+                seasons.value = emptyList(); episodes.value = emptyList()
             } finally {
                 loading.value = false
             }
         }
     }
 
-    private fun updateEpisodesFromMap(eps: Map<String, List<Episode>>) {
+    private fun updateFromMap(eps: Map<String, List<Episode>>) {
         val keys = eps.keys.sortedBy { it.toIntOrNull() ?: 0 }
         seasons.value        = keys
         selectedSeason.value = keys.firstOrNull() ?: "1"
@@ -166,8 +149,8 @@ class SeriesViewModel @Inject constructor(
 
     fun selectSeason(season: String) {
         selectedSeason.value = season
-        val cached = episodeCache[selectedSeries.value?.seriesId ?: return]
-        episodes.value = cached?.get(season) ?: emptyList()
+        episodes.value = episodeCache[selectedSeries.value?.seriesId ?: return]
+            ?.get(season) ?: emptyList()
     }
 
     fun search(query: String) {
@@ -177,4 +160,7 @@ class SeriesViewModel @Inject constructor(
 
     fun buildEpisodeUrl(episodeId: String, ext: String) =
         repo.buildSeriesUrl(episodeId, ext)
+
+    // Used by SearchFragment
+    fun getAllSeries(): List<SeriesItem> = allSeries.value
 }
