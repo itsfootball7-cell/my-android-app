@@ -10,6 +10,7 @@ import android.os.Looper
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import android.widget.SeekBar
 import androidx.appcompat.app.AppCompatActivity
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -20,6 +21,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.nitro.tvplayer.databinding.ActivityPlayerBinding
+import com.nitro.tvplayer.utils.PlaybackPositionManager
 import com.nitro.tvplayer.utils.PlayerPrefs
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -29,32 +31,41 @@ import kotlin.math.abs
 class PlayerActivity : AppCompatActivity() {
 
     companion object {
-        const val EXTRA_URL         = "extra_url"
-        const val EXTRA_TITLE       = "extra_title"
-        const val EXTRA_TYPE        = "extra_type"       // "live" | "movie" | "series"
-        const val EXTRA_PLAYLIST    = "extra_playlist"   // ArrayList<String> urls
-        const val EXTRA_TITLES      = "extra_titles"     // ArrayList<String> titles
-        const val EXTRA_START_INDEX = "extra_start_index"
+        const val EXTRA_URL          = "extra_url"
+        const val EXTRA_TITLE        = "extra_title"
+        const val EXTRA_TYPE         = "extra_type"
+        const val EXTRA_PLAYLIST     = "extra_playlist"
+        const val EXTRA_TITLES       = "extra_titles"
+        const val EXTRA_IDS          = "extra_ids"        // content IDs for resume
+        const val EXTRA_START_INDEX  = "extra_start_index"
 
         private const val CONTROLS_HIDE_DELAY = 4000L
         private const val SWIPE_THRESHOLD     = 8f
         private const val FADE_DURATION       = 300L
+        private const val SEEK_UPDATE_INTERVAL = 500L
     }
 
     private lateinit var binding: ActivityPlayerBinding
     private var player: ExoPlayer? = null
     private lateinit var trackSelector: DefaultTrackSelector
     private lateinit var audioManager: AudioManager
-    private val handler = Handler(Looper.getMainLooper())
+    private val handler     = Handler(Looper.getMainLooper())
+    private val seekHandler = Handler(Looper.getMainLooper())
 
     @Inject lateinit var playerPrefs: PlayerPrefs
+    @Inject lateinit var positionManager: PlaybackPositionManager
 
     // Playlist
     private var urls         = arrayListOf<String>()
     private var titles       = arrayListOf<String>()
+    private var contentIds   = arrayListOf<String>()  // for resume persistence
     private var currentIndex = 0
-    private var contentType  = "live"   // "live" | "movie" | "series"
+    private var contentType  = "live"
     private val isLive get() = contentType == "live"
+
+    // Current content ID for persistence
+    private val currentContentId get() =
+        if (contentIds.size > currentIndex) contentIds[currentIndex] else ""
 
     // Touch
     private var touchStartX   = 0f
@@ -67,7 +78,10 @@ class PlayerActivity : AppCompatActivity() {
     private var screenHeight  = 0
     private var controlsVisible = false
 
-    // Aspect ratio — persisted globally
+    // Seek bar
+    private var isUserSeeking = false
+
+    // Aspect ratio
     private val aspectRatios = listOf(
         AspectRatioFrameLayout.RESIZE_MODE_FIT,
         AspectRatioFrameLayout.RESIZE_MODE_FILL,
@@ -79,6 +93,14 @@ class PlayerActivity : AppCompatActivity() {
     private var aspectIndex  = 0
 
     private val hideControlsRunnable = Runnable { fadeOutAll() }
+
+    // Periodic seek bar updater
+    private val seekUpdateRunnable = object : Runnable {
+        override fun run() {
+            updateSeekBar()
+            seekHandler.postDelayed(this, SEEK_UPDATE_INTERVAL)
+        }
+    }
 
     // ─── onCreate ─────────────────────────────────────────────
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,28 +123,35 @@ class PlayerActivity : AppCompatActivity() {
         // Build playlist
         val pUrls   = intent.getStringArrayListExtra(EXTRA_PLAYLIST)
         val pTitles = intent.getStringArrayListExtra(EXTRA_TITLES)
+        val pIds    = intent.getStringArrayListExtra(EXTRA_IDS)
         if (!pUrls.isNullOrEmpty()) {
             urls         = pUrls
             titles       = pTitles ?: arrayListOf()
+            contentIds   = pIds    ?: arrayListOf()
             currentIndex = intent.getIntExtra(EXTRA_START_INDEX, 0)
         } else {
-            val u = intent.getStringExtra(EXTRA_URL) ?: return
+            val u = intent.getStringExtra(EXTRA_URL)   ?: return
             val t = intent.getStringExtra(EXTRA_TITLE) ?: ""
-            urls   = arrayListOf(u)
-            titles = arrayListOf(t)
+            val id = intent.getStringExtra(EXTRA_IDS)  ?: u
+            urls       = arrayListOf(u)
+            titles     = arrayListOf(t)
+            contentIds = arrayListOf(id)
         }
 
         // Restore persisted aspect ratio
         aspectIndex = playerPrefs.getAspectRatioIndex()
 
-        // Everything starts invisible/hidden
+        // All UI starts hidden
         listOf(
             binding.topBar, binding.bottomBar,
             binding.centerControls,
             binding.leftBarContainer, binding.rightBarContainer
         ).forEach { it.alpha = 0f; it.visibility = View.INVISIBLE }
 
-        // CC button: only for movies/series, hidden for live
+        // Seek bar section hidden for live
+        binding.seekBarSection.visibility = if (isLive) View.GONE else View.VISIBLE
+
+        // CC only for VOD
         binding.btnSubtitles.visibility = if (isLive) View.GONE else View.VISIBLE
 
         // Live badge only for live
@@ -133,6 +162,7 @@ class PlayerActivity : AppCompatActivity() {
         updateVolumeUI()
         updateBrightnessUI(0.5f)
         setupAspectButtons()
+        setupSeekBar()
         setupTouchGestures()
         playIndex(currentIndex)
     }
@@ -140,26 +170,35 @@ class PlayerActivity : AppCompatActivity() {
     // ─── Play by index ────────────────────────────────────────
     private fun playIndex(index: Int) {
         if (index < 0 || index >= urls.size) return
-        currentIndex = index
 
+        // Save position of current content before switching
+        if (!isLive && currentContentId.isNotBlank() && player != null) {
+            val pos = player!!.currentPosition
+            val dur = player!!.duration.takeIf { it > 0 } ?: 0L
+            positionManager.savePosition(currentContentId, pos, dur)
+        }
+
+        currentIndex = index
         val url   = urls[index]
         val title = if (index < titles.size) titles[index] else ""
 
-        // Show program info in bottom bar only
         binding.tvProgramInfo.text = title
-        // tvTitle in top bar also updated
-        binding.tvTitle.text = title
+        binding.tvTitle.text       = title
 
-        // Prev/Next: only show if functional
-        // For live: always show both (cycle through channels)
-        // For vod/series: show only if there is a prev/next
+        // Prev/Next visibility
         binding.btnPrev.visibility = if (currentIndex > 0) View.VISIBLE else View.INVISIBLE
         binding.btnNext.visibility = if (currentIndex < urls.size - 1) View.VISIBLE else View.INVISIBLE
 
-        // Release old
+        // Release old player
         player?.release()
+        seekHandler.removeCallbacks(seekUpdateRunnable)
         binding.progressBar.visibility = View.VISIBLE
-        binding.tvError.visibility = View.GONE
+        binding.tvError.visibility     = View.GONE
+
+        // Reset seek bar
+        binding.seekBar.progress    = 0
+        binding.tvCurrentTime.text  = "0:00"
+        binding.tvRemainingTime.text = "- 0:00"
 
         trackSelector = DefaultTrackSelector(this)
         player = ExoPlayer.Builder(this).setTrackSelector(trackSelector).build()
@@ -176,40 +215,62 @@ class PlayerActivity : AppCompatActivity() {
         player!!.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
-                    Player.STATE_BUFFERING -> binding.progressBar.visibility = View.VISIBLE
-                    Player.STATE_READY     -> {
+                    Player.STATE_BUFFERING -> {
+                        binding.progressBar.visibility = View.VISIBLE
+                    }
+                    Player.STATE_READY -> {
                         binding.progressBar.visibility = View.GONE
                         binding.tvError.visibility     = View.GONE
-                        // Setup CC after stream is ready (so tracks are available)
+
+                        // Resume from saved position for VOD
+                        if (!isLive) {
+                            val savedPos = positionManager.getSavedPosition(currentContentId)
+                            if (savedPos > 0L) {
+                                player!!.seekTo(savedPos)
+                            }
+                            // Start seek bar updates
+                            seekHandler.post(seekUpdateRunnable)
+                        }
+
                         if (!isLive) setupSubtitleButton()
                     }
                     Player.STATE_ENDED -> {
-                        // Auto-advance for series/movies
+                        // Clear saved position on completion
+                        if (!isLive) positionManager.clearPosition(currentContentId)
+                        seekHandler.removeCallbacks(seekUpdateRunnable)
+                        // Auto-advance for series
                         if (!isLive && currentIndex < urls.size - 1) {
                             playIndex(currentIndex + 1)
                         }
                     }
-                    Player.STATE_IDLE -> binding.progressBar.visibility = View.GONE
+                    Player.STATE_IDLE -> {
+                        binding.progressBar.visibility = View.GONE
+                        seekHandler.removeCallbacks(seekUpdateRunnable)
+                    }
                 }
             }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                syncPlayPauseBtn()
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 binding.progressBar.visibility = View.GONE
                 binding.tvError.text           = "Playback error: ${error.message}"
                 binding.tvError.visibility     = View.VISIBLE
+                seekHandler.removeCallbacks(seekUpdateRunnable)
             }
         })
 
-        // Playback controls
+        // Controls
         binding.btnPlayPause.setOnClickListener {
             if (player?.isPlaying == true) player?.pause() else player?.play()
             syncPlayPauseBtn()
             resetHideControls()
         }
-
         binding.btnPrev.setOnClickListener {
             if (currentIndex > 0) { playIndex(currentIndex - 1); resetHideControls() }
         }
-
         binding.btnNext.setOnClickListener {
             if (currentIndex < urls.size - 1) { playIndex(currentIndex + 1); resetHideControls() }
         }
@@ -219,20 +280,77 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnPlayPause.text = if (player?.isPlaying == true) "⏸" else "▶"
     }
 
-    // ─── Aspect Ratio (both top and bottom buttons, synced) ───
+    // ─── Seek Bar ─────────────────────────────────────────────
+    private fun setupSeekBar() {
+        binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                isUserSeeking = true
+                // Stop auto-hide while scrubbing
+                handler.removeCallbacks(hideControlsRunnable)
+            }
+
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                if (!fromUser) return
+                val duration = player?.duration ?: return
+                if (duration <= 0) return
+                // Show preview time while scrubbing
+                val seekToMs = (progress / 1000f * duration).toLong()
+                binding.tvCurrentTime.text  = formatTime(seekToMs)
+                binding.tvRemainingTime.text = "- ${formatTime(duration - seekToMs)}"
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                isUserSeeking = false
+                val duration = player?.duration ?: return
+                if (duration <= 0) return
+                // Seek to the chosen position
+                val seekToMs = (seekBar!!.progress / 1000f * duration).toLong()
+                player?.seekTo(seekToMs)
+                resetHideControls()
+            }
+        })
+    }
+
+    // Update seek bar every 500ms while playing
+    private fun updateSeekBar() {
+        if (isUserSeeking) return
+        val player    = player ?: return
+        val duration  = player.duration.takeIf { it > 0 } ?: return
+        val position  = player.currentPosition
+
+        val progress  = ((position * 1000f) / duration).toInt()
+        binding.seekBar.progress    = progress
+        binding.tvCurrentTime.text  = formatTime(position)
+        binding.tvRemainingTime.text = "- ${formatTime(duration - position)}"
+    }
+
+    // Format ms → "H:MM:SS" or "M:SS"
+    private fun formatTime(ms: Long): String {
+        if (ms < 0) return "0:00"
+        val totalSeconds = ms / 1000
+        val hours   = totalSeconds / 3600
+        val minutes = (totalSeconds % 3600) / 60
+        val seconds = totalSeconds % 60
+        return if (hours > 0) {
+            "%d:%02d:%02d".format(hours, minutes, seconds)
+        } else {
+            "%d:%02d".format(minutes, seconds)
+        }
+    }
+
+    // ─── Aspect Ratio (persisted) ─────────────────────────────
     private fun setupAspectButtons() {
         updateAspectLabel()
-
-        val cycleAspect = {
+        val cycle = {
             aspectIndex = (aspectIndex + 1) % aspectRatios.size
             binding.playerView.resizeMode = aspectRatios[aspectIndex]
             updateAspectLabel()
             playerPrefs.saveAspectRatioIndex(aspectIndex)
             resetHideControls()
         }
-
-        binding.btnAspectRatio.setOnClickListener { cycleAspect() }
-        binding.btnAspectRatioBottom.setOnClickListener { cycleAspect() }
+        binding.btnAspectRatio.setOnClickListener { cycle() }
+        binding.btnAspectRatioBottom.setOnClickListener { cycle() }
     }
 
     private fun updateAspectLabel() {
@@ -333,6 +451,7 @@ class PlayerActivity : AppCompatActivity() {
         fadeIn(binding.centerControls)
         fadeIn(binding.leftBarContainer)
         fadeIn(binding.rightBarContainer)
+        if (!isLive) fadeIn(binding.seekBarSection)
     }
 
     private fun fadeOutAll() {
@@ -342,7 +461,8 @@ class PlayerActivity : AppCompatActivity() {
         fadeOut(binding.centerControls)
         fadeOut(binding.leftBarContainer)
         fadeOut(binding.rightBarContainer)
-        binding.volumeIndicator.visibility    = View.GONE
+        if (!isLive) fadeOut(binding.seekBarSection)
+        binding.volumeIndicator.visibility     = View.GONE
         binding.brightnessIndicator.visibility = View.GONE
     }
 
@@ -356,7 +476,7 @@ class PlayerActivity : AppCompatActivity() {
         scheduleHide()
     }
 
-    // ─── Touch & Swipe gestures ───────────────────────────────
+    // ─── Touch Gestures ───────────────────────────────────────
     @SuppressLint("ClickableViewAccessibility")
     private fun setupTouchGestures() {
         binding.touchOverlay.setOnTouchListener { _, event ->
@@ -371,7 +491,6 @@ class PlayerActivity : AppCompatActivity() {
                     handler.removeCallbacks(hideControlsRunnable)
                     true
                 }
-
                 MotionEvent.ACTION_MOVE -> {
                     val dy = event.y - touchStartY
                     if (!isSwiping && abs(dy) > SWIPE_THRESHOLD) {
@@ -381,12 +500,12 @@ class PlayerActivity : AppCompatActivity() {
                         fadeIn(binding.rightBarContainer)
                         when (swipeType) {
                             "volume"     -> {
-                                binding.volumeIndicator.visibility    = View.VISIBLE
+                                binding.volumeIndicator.visibility     = View.VISIBLE
                                 binding.brightnessIndicator.visibility = View.GONE
                             }
                             "brightness" -> {
                                 binding.brightnessIndicator.visibility = View.VISIBLE
-                                binding.volumeIndicator.visibility    = View.GONE
+                                binding.volumeIndicator.visibility     = View.GONE
                             }
                         }
                     }
@@ -408,16 +527,13 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     true
                 }
-
                 MotionEvent.ACTION_UP -> {
                     if (!isSwiping) {
-                        // Tap: toggle controls
                         if (controlsVisible) fadeOutAll()
                         else { fadeInAll(); scheduleHide() }
                     } else {
-                        // End of swipe: hide indicators after delay
                         handler.postDelayed({
-                            binding.volumeIndicator.visibility    = View.GONE
+                            binding.volumeIndicator.visibility     = View.GONE
                             binding.brightnessIndicator.visibility = View.GONE
                             if (!controlsVisible) {
                                 fadeOut(binding.leftBarContainer)
@@ -434,12 +550,32 @@ class PlayerActivity : AppCompatActivity() {
         }
     }
 
+    // ─── Save position on exit ────────────────────────────────
+    private fun saveCurrentPosition() {
+        if (!isLive && currentContentId.isNotBlank()) {
+            val pos = player?.currentPosition ?: 0L
+            val dur = player?.duration?.takeIf { it > 0 } ?: 0L
+            if (pos > 0L) positionManager.savePosition(currentContentId, pos, dur)
+        }
+    }
+
     // ─── Lifecycle ────────────────────────────────────────────
-    override fun onPause()   { super.onPause();  player?.pause() }
-    override fun onResume()  { super.onResume(); player?.play()  }
+    override fun onPause() {
+        super.onPause()
+        player?.pause()
+        saveCurrentPosition()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!isLive) player?.play()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        saveCurrentPosition()
         handler.removeCallbacksAndMessages(null)
+        seekHandler.removeCallbacksAndMessages(null)
         player?.release()
         player = null
     }
