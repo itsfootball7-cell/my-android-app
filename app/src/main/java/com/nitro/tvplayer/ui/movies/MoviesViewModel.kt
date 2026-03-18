@@ -53,14 +53,13 @@ class MoviesViewModel @Inject constructor(
                         Category(MOVIE_CAT_CONTINUE,       "Continue Watching", 0),
                         Category(MOVIE_CAT_RECENTLY_ADDED, "Recently Added",    0)
                     )
-                    categories.value = special + catList
-                    val firstReal = catList.firstOrNull()
-                    if (firstReal != null) selectedCategory.value = firstReal
+                    categories.value       = special + catList
+                    selectedCategory.value = catList.firstOrNull()
                 }
 
                 moviesDeferred.await().onSuccess { list ->
                     allMovies.value = list
-                    val firstCatId = selectedCategory.value?.categoryId
+                    val firstCatId  = selectedCategory.value?.categoryId
                     movies.value = if (firstCatId != null)
                         list.filter { it.categoryId == firstCatId }
                     else list
@@ -89,13 +88,12 @@ class MoviesViewModel @Inject constructor(
             }
 
             MOVIE_CAT_CONTINUE -> {
-                // Use WatchedList sorted by most recently watched
-                val watchedItems = positionManager.getWatchedByType("movie")
-                val watchedIds   = watchedItems.mapNotNull {
-                    it.contentId.removePrefix("movie_").toIntOrNull()
-                }
+                val watched = positionManager.getWatchedByType("movie")
                 val movieMap = allMovies.value.associateBy { it.streamId }
-                watchedIds.mapNotNull { movieMap[it] }
+                watched.mapNotNull { entry ->
+                    val id = entry.contentId.removePrefix("movie_").toIntOrNull()
+                    if (id != null) movieMap[id] else null
+                }
             }
 
             MOVIE_CAT_RECENTLY_ADDED -> {
@@ -110,10 +108,15 @@ class MoviesViewModel @Inject constructor(
         if (filtered.isNotEmpty()) selectedMovie.value = filtered.first()
     }
 
-    fun selectMovie(movie: VodStream) { selectedMovie.value = movie }
+    fun selectMovie(movie: VodStream) {
+        selectedMovie.value = movie
+    }
 
     fun search(query: String) {
-        if (query.isEmpty()) { filterByCategory(selectedCategory.value ?: return); return }
+        if (query.isEmpty()) {
+            filterByCategory(selectedCategory.value ?: return)
+            return
+        }
         movies.value = allMovies.value.filter { it.name.contains(query, ignoreCase = true) }
     }
 
