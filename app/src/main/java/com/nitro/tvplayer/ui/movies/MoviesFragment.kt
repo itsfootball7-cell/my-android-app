@@ -15,9 +15,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.nitro.tvplayer.databinding.FragmentMoviesBinding
 import com.nitro.tvplayer.ui.livetv.CategoryAdapter
 import com.nitro.tvplayer.ui.player.PlayerActivity
-import com.nitro.tvplayer.utils.gone
 import com.nitro.tvplayer.utils.loadUrl
-import com.nitro.tvplayer.utils.visible
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 
@@ -30,7 +28,10 @@ class MoviesFragment : Fragment() {
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var moviesAdapter: MoviesAdapter
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
         _binding = FragmentMoviesBinding.inflate(inflater, container, false)
         return binding.root
     }
@@ -43,31 +44,32 @@ class MoviesFragment : Fragment() {
     }
 
     private fun setupAdapters() {
-        categoryAdapter = CategoryAdapter { category ->
-            viewModel.filterByCategory(category.categoryId)
-        }
+        categoryAdapter = CategoryAdapter { viewModel.filterByCategory(it.categoryId) }
         binding.rvCategories.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = categoryAdapter
         }
 
-        moviesAdapter = MoviesAdapter { movie -> viewModel.selectMovie(movie) }
+        moviesAdapter = MoviesAdapter { viewModel.selectMovie(it) }
         binding.rvMovies.apply {
             layoutManager = GridLayoutManager(requireContext(), 3)
             adapter = moviesAdapter
         }
 
         binding.btnPlay.setOnClickListener {
-            viewModel.selectedMovie.value?.let { movie ->
-                val url = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
-                startActivity(
-                    Intent(requireContext(), PlayerActivity::class.java).apply {
-                        putExtra(PlayerActivity.EXTRA_URL, url)
-                        putExtra(PlayerActivity.EXTRA_TITLE, movie.name)
-                        putExtra(PlayerActivity.EXTRA_TYPE, "movie")
-                    }
-                )
-            }
+            val movie = viewModel.selectedMovie.value ?: return@setOnClickListener
+            val url   = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
+            // Use streamId as content ID for resume persistence
+            val contentId = "movie_${movie.streamId}"
+
+            startActivity(
+                Intent(requireContext(), PlayerActivity::class.java).apply {
+                    putExtra(PlayerActivity.EXTRA_URL,   url)
+                    putExtra(PlayerActivity.EXTRA_TITLE, movie.name)
+                    putExtra(PlayerActivity.EXTRA_TYPE,  "movie")
+                    putStringArrayListExtra(PlayerActivity.EXTRA_IDS, arrayListOf(contentId))
+                }
+            )
         }
     }
 
@@ -81,17 +83,17 @@ class MoviesFragment : Fragment() {
         lifecycleScope.launch {
             viewModel.selectedMovie.collect { movie ->
                 movie?.let {
-                    binding.tvMovieTitle.text = it.name
-                    binding.tvMovieYear.text = it.releaseDate ?: ""
+                    binding.tvMovieTitle.text  = it.name
+                    binding.tvMovieYear.text   = it.releaseDate ?: ""
                     binding.tvMovieRating.text = "★ ${it.rating5 ?: it.rating ?: "N/A"}"
-                    binding.tvMoviePlot.text = it.plot ?: "No description available."
+                    binding.tvMoviePlot.text   = it.plot ?: "No description available."
                     binding.ivMoviePoster.loadUrl(it.streamIcon)
                 }
             }
         }
         lifecycleScope.launch {
-            viewModel.loading.collect { loading ->
-                binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
+            viewModel.loading.collect {
+                binding.progressBar.visibility = if (it) View.VISIBLE else View.GONE
             }
         }
     }
