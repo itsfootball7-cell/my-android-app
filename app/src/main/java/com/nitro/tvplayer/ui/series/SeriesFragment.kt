@@ -33,7 +33,6 @@ class SeriesFragment : Fragment() {
 
     private var _binding: FragmentSeriesBinding? = null
     private val binding get() = _binding!!
-
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var seriesAdapter: SeriesAdapter
     private lateinit var episodeAdapter: EpisodeAdapter
@@ -62,25 +61,20 @@ class SeriesFragment : Fragment() {
         }
 
         seriesAdapter = SeriesAdapter(
-            onClick = { series ->
-                viewModel.selectSeries(series)
-            },
+            onClick = { viewModel.selectSeries(it) },
             onLongPress = { series ->
-                val favItem = FavouriteItem(
-                    id         = "series_${series.seriesId}",
-                    name       = series.name,
-                    icon       = series.cover,
-                    type       = "series",
-                    streamUrl  = "",
-                    categoryId = series.categoryId,
-                    extra      = series.seriesId.toString()
+                val added = favouritesManager.toggle(
+                    FavouriteItem(
+                        id = "series_${series.seriesId}", name = series.name,
+                        icon = series.cover, type = "series",
+                        streamUrl = "", categoryId = series.categoryId,
+                        extra = series.seriesId.toString()
+                    )
                 )
-                val added = favouritesManager.toggle(favItem)
-                val msg = if (added)
-                    "⭐ \"${series.name}\" added to Favourites"
-                else
-                    "\"${series.name}\" removed from Favourites"
-                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+                Toast.makeText(requireContext(),
+                    if (added) "⭐ \"${series.name}\" added to Favourites"
+                    else "\"${series.name}\" removed from Favourites",
+                    Toast.LENGTH_SHORT).show()
             }
         )
         binding.rvSeries.apply {
@@ -90,34 +84,29 @@ class SeriesFragment : Fragment() {
 
         seasonAdapter = SeasonAdapter { viewModel.selectSeason(it) }
         binding.rvSeasons.apply {
-            layoutManager = LinearLayoutManager(
-                requireContext(), LinearLayoutManager.HORIZONTAL, false
-            )
+            layoutManager = LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
             adapter = seasonAdapter
         }
 
         episodeAdapter = EpisodeAdapter { episode ->
-            val episodes      = viewModel.episodes.value
-            val index         = episodes.indexOfFirst { it.id == episode.id }
-            val seriesName    = viewModel.selectedSeries.value?.name ?: ""
-            val season        = viewModel.selectedSeason.value
-            val urls          = ArrayList(episodes.map {
+            val episodes   = viewModel.episodes.value
+            val index      = episodes.indexOfFirst { it.id == episode.id }
+            val seriesName = viewModel.selectedSeries.value?.name ?: ""
+            val season     = viewModel.selectedSeason.value
+            val urls = ArrayList(episodes.map {
                 viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv")
             })
             val episodeTitles = ArrayList(episodes.map {
                 "$seriesName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}"
             })
             val ids = ArrayList(episodes.map { "ep_${it.id}" })
-
-            startActivity(
-                Intent(requireContext(), PlayerActivity::class.java).apply {
-                    putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
-                    putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,   episodeTitles)
-                    putStringArrayListExtra(PlayerActivity.EXTRA_IDS,      ids)
-                    putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
-                    putExtra(PlayerActivity.EXTRA_TYPE, "series")
-                }
-            )
+            startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
+                putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
+                putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,   episodeTitles)
+                putStringArrayListExtra(PlayerActivity.EXTRA_IDS,      ids)
+                putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
+                putExtra(PlayerActivity.EXTRA_TYPE, "series")
+            })
         }
         binding.rvEpisodes.apply {
             layoutManager = LinearLayoutManager(requireContext())
@@ -128,36 +117,38 @@ class SeriesFragment : Fragment() {
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-
                 launch {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
-                        if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
+                        // Find first real category (skip 4 special ones)
+                        val firstRealIndex = cats.indexOfFirst { c ->
+                            c.categoryId != SERIES_CAT_ALL &&
+                            c.categoryId != SERIES_CAT_FAVOURITES &&
+                            c.categoryId != SERIES_CAT_CONTINUE &&
+                            c.categoryId != SERIES_CAT_RECENTLY_ADDED
+                        }
+                        if (firstRealIndex >= 0) categoryAdapter.setSelected(firstRealIndex)
                     }
                 }
-
                 launch {
                     viewModel.seriesList.collect { list ->
                         _binding ?: return@collect
                         seriesAdapter.submitList(list)
                     }
                 }
-
                 launch {
                     viewModel.seasons.collect { list ->
                         _binding ?: return@collect
                         seasonAdapter.submitList(list)
                     }
                 }
-
                 launch {
                     viewModel.episodes.collect { list ->
                         _binding ?: return@collect
                         episodeAdapter.submitList(list)
                     }
                 }
-
                 launch {
                     viewModel.selectedSeries.collect { series ->
                         series ?: return@collect
@@ -169,19 +160,17 @@ class SeriesFragment : Fragment() {
                         binding.ivSeriesCover.loadUrl(series.cover)
                     }
                 }
-
                 launch {
                     viewModel.loading.collect { loading ->
                         _binding?.progressBar?.visibility =
                             if (loading) View.VISIBLE else View.GONE
                     }
                 }
-
                 launch {
                     viewModel.error.collect { err ->
                         err ?: return@collect
                         _binding ?: return@collect
-                        // silent — don't crash on series info errors
+                        // Show error silently in log — don't crash UI
                     }
                 }
             }
@@ -196,8 +185,5 @@ class SeriesFragment : Fragment() {
         })
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
-    }
+    override fun onDestroyView() { super.onDestroyView(); _binding = null }
 }
