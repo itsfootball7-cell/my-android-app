@@ -9,27 +9,26 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 data class WatchedEntry(
-    val contentId:     String,
-    val title:         String,
-    val icon:          String?,
-    val type:          String,       // "movie" or "series"
-    val positionMs:    Long,
-    val durationMs:    Long,
-    val lastWatchedAt: Long          // unix ms — for sorting
+    val contentId: String,
+    val title: String,
+    val icon: String?,
+    val type: String,
+    val positionMs: Long,
+    val durationMs: Long,
+    val lastWatchedAt: Long
 )
 
 @Singleton
 class PlaybackPositionManager @Inject constructor(
-    @ApplicationContext context: Context
+    @ApplicationContext private val context: Context
 ) {
     private val prefs: SharedPreferences =
-        context.getSharedPreferences("playback_positions", Context.MODE_PRIVATE)
+        context.getSharedPreferences("nitro_playback", Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    // ── Raw position save/get (used by player) ───────────────
-
+    // ── Raw position ─────────────────────────────────────────
     fun savePosition(contentId: String, positionMs: Long, durationMs: Long) {
-        if (contentId.isBlank() || positionMs <= 0) return
+        if (contentId.isBlank() || positionMs < 3000) return
         prefs.edit()
             .putLong("pos_$contentId", positionMs)
             .putLong("dur_$contentId", durationMs)
@@ -39,7 +38,6 @@ class PlaybackPositionManager @Inject constructor(
     fun getSavedPosition(contentId: String): Long {
         val pos = prefs.getLong("pos_$contentId", 0L)
         val dur = prefs.getLong("dur_$contentId", 0L)
-        // If >95% watched — treat as finished, restart
         if (dur > 0 && pos > dur * 0.95) {
             clearPosition(contentId)
             return 0L
@@ -48,7 +46,7 @@ class PlaybackPositionManager @Inject constructor(
     }
 
     fun hasResumePoint(contentId: String): Boolean =
-        getSavedPosition(contentId) > 5_000L   // more than 5 seconds
+        getSavedPosition(contentId) > 3000L
 
     fun getProgressPercent(contentId: String): Int {
         val pos = prefs.getLong("pos_$contentId", 0L)
@@ -62,28 +60,24 @@ class PlaybackPositionManager @Inject constructor(
             .remove("pos_$contentId")
             .remove("dur_$contentId")
             .apply()
-        removeFromWatchedList(contentId)
+        val list = getWatchedList().filter { it.contentId != contentId }
+        prefs.edit().putString("watched_list", gson.toJson(list)).apply()
     }
 
-    // ── Continue Watching list ───────────────────────────────
-    // Saves BOTH the position AND rich metadata (title, icon, type)
-    // Called every time user exits player or switches section
-
+    // ── Continue Watching ────────────────────────────────────
     fun saveWatchedEntry(
-        contentId:  String,
-        title:      String,
-        icon:       String?,
-        type:       String,
+        contentId: String,
+        title: String,
+        icon: String?,
+        type: String,
         positionMs: Long,
         durationMs: Long
     ) {
-        // Don't save if less than 5 seconds watched
-        if (positionMs < 5_000L) return
+        if (contentId.isBlank() || positionMs < 3000) return
 
-        // Save the raw position too (for resume)
+        // Always save raw position first
         savePosition(contentId, positionMs, durationMs)
 
-        // Update the watched list
         val list     = getWatchedList().toMutableList()
         val existing = list.indexOfFirst { it.contentId == contentId }
         val entry    = WatchedEntry(
@@ -95,14 +89,9 @@ class PlaybackPositionManager @Inject constructor(
             durationMs    = durationMs,
             lastWatchedAt = System.currentTimeMillis()
         )
+        if (existing >= 0) list[existing] = entry
+        else list.add(0, entry)
 
-        if (existing >= 0) {
-            list[existing] = entry
-        } else {
-            list.add(0, entry)
-        }
-
-        // Keep max 50 entries sorted by most recently watched
         val trimmed = list.sortedByDescending { it.lastWatchedAt }.take(50)
         prefs.edit().putString("watched_list", gson.toJson(trimmed)).apply()
     }
@@ -112,23 +101,11 @@ class PlaybackPositionManager @Inject constructor(
         return try {
             val type = object : TypeToken<List<WatchedEntry>>() {}.type
             gson.fromJson<List<WatchedEntry>>(json, type) ?: emptyList()
-        } catch (e: Exception) {
-            emptyList()
-        }
+        } catch (e: Exception) { emptyList() }
     }
 
     fun getWatchedByType(type: String): List<WatchedEntry> =
         getWatchedList().filter { it.type == type }
 
-    fun getResumeEntry(contentId: String): WatchedEntry? =
-        getWatchedList().find { it.contentId == contentId }
-
-    private fun removeFromWatchedList(contentId: String) {
-        val list = getWatchedList().filter { it.contentId != contentId }
-        prefs.edit().putString("watched_list", gson.toJson(list)).apply()
-    }
-
-    fun clearAll() {
-        prefs.edit().clear().apply()
-    }
+    fun clearAll() = prefs.edit().clear().apply()
 }
