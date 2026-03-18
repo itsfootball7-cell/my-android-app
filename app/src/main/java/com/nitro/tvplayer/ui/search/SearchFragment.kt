@@ -62,9 +62,7 @@ class SearchFragment : Fragment() {
     }
 
     private fun setupAdapter() {
-        resultsAdapter = SearchResultsAdapter { result ->
-            handleResultClick(result)
-        }
+        resultsAdapter = SearchResultsAdapter { result -> handleResultClick(result) }
         binding.rvResults.layoutManager = LinearLayoutManager(requireContext())
         binding.rvResults.adapter = resultsAdapter
     }
@@ -89,9 +87,9 @@ class SearchFragment : Fragment() {
             }
             "movie" -> {
                 val intent = Intent(requireContext(), PlayerActivity::class.java)
-                intent.putExtra(PlayerActivity.EXTRA_URL, result.streamUrl)
+                intent.putExtra(PlayerActivity.EXTRA_URL,   result.streamUrl)
                 intent.putExtra(PlayerActivity.EXTRA_TITLE, result.name)
-                intent.putExtra(PlayerActivity.EXTRA_TYPE, "movie")
+                intent.putExtra(PlayerActivity.EXTRA_TYPE,  "movie")
                 intent.putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
                     arrayListOf("movie_${result.id}"))
                 intent.putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,
@@ -131,16 +129,15 @@ class SearchFragment : Fragment() {
 
     private fun performSearch(query: String) {
         val b = _binding ?: return
-        b.progressBar.visibility = View.VISIBLE
-        b.rvResults.visibility   = View.GONE
-        b.emptyState.visibility  = View.GONE
+        b.progressBar.visibility   = View.VISIBLE
+        b.rvResults.visibility     = View.GONE
+        b.emptyState.visibility    = View.GONE
         b.tvResultCount.visibility = View.GONE
 
         val results = mutableListOf<SearchResult>()
 
-        // Search Live TV channels
-        val liveStreams = liveTvViewModel.getAllStreams()
-        for (stream in liveStreams) {
+        // Search Live TV
+        for (stream in liveTvViewModel.getAllStreams()) {
             if (stream.name.contains(query, ignoreCase = true)) {
                 results.add(SearchResult(
                     id        = stream.streamId,
@@ -155,27 +152,30 @@ class SearchFragment : Fragment() {
         }
 
         // Search Movies
-        val allMovies = moviesViewModel.getAllMovies()
-        for (movie in allMovies) {
+        for (movie in moviesViewModel.getAllMovies()) {
             if (movie.name.contains(query, ignoreCase = true)) {
+                // ── Explicit toString() to avoid type mismatch ──
+                val ratingStr: String? = (movie.rating5 ?: movie.rating)?.toString()
                 results.add(SearchResult(
                     id        = movie.streamId,
                     name      = movie.name,
                     icon      = movie.streamIcon,
                     type      = "movie",
                     typeLabel = "Movie",
-                    streamUrl = moviesViewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4"),
-                    year      = movie.releaseDate,
-                    rating    = movie.rating5 ?: movie.rating
+                    streamUrl = moviesViewModel.buildStreamUrl(
+                        movie.streamId, movie.extension ?: "mp4"),
+                    year      = movie.releaseDate?.toString(),
+                    rating    = ratingStr
                 ))
                 if (results.count { it.type == "movie" } >= 20) break
             }
         }
 
         // Search Series
-        val allSeries = seriesViewModel.getAllSeries()
-        for (series in allSeries) {
+        for (series in seriesViewModel.getAllSeries()) {
             if (series.name.contains(query, ignoreCase = true)) {
+                // ── Explicit toString() to avoid type mismatch ──
+                val ratingStr: String? = (series.rating5 ?: series.rating)?.toString()
                 results.add(SearchResult(
                     id        = series.seriesId,
                     name      = series.name,
@@ -183,8 +183,8 @@ class SearchFragment : Fragment() {
                     type      = "series",
                     typeLabel = "Series",
                     streamUrl = "",
-                    year      = series.releaseDate,
-                    rating    = series.rating5 ?: series.rating
+                    year      = series.releaseDate?.toString(),
+                    rating    = ratingStr
                 ))
                 if (results.count { it.type == "series" } >= 20) break
             }
