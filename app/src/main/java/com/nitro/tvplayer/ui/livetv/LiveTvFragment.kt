@@ -65,12 +65,12 @@ class LiveTvFragment : Fragment() {
             binding.previewPlayerView.useController = false
         }
         binding.previewPlayerView.setOnClickListener {
-            val stream = viewModel.selectedStream.value ?: return@setOnClickListener
-            openFullscreen(stream)
+            viewModel.selectedStream.value?.let { openFullscreen(it) }
         }
         binding.previewContainer.setOnClickListener {
-            val stream = viewModel.selectedStream.value ?: return@setOnClickListener
-            if (currentPreviewUrl != null) openFullscreen(stream)
+            if (currentPreviewUrl != null) {
+                viewModel.selectedStream.value?.let { openFullscreen(it) }
+            }
         }
     }
 
@@ -82,10 +82,12 @@ class LiveTvFragment : Fragment() {
             prepare()
             playWhenReady = true
         }
-        binding.previewPlayerView.visible()
-        binding.ivChannelLogo.gone()
-        binding.tvClickToWatch.visible()
-        binding.tapHint.gone()
+        _binding?.let { b ->
+            b.previewPlayerView.visible()
+            b.ivChannelLogo.gone()
+            b.tvClickToWatch.visible()
+            b.tapHint.gone()
+        }
     }
 
     private fun openFullscreen(stream: com.nitro.tvplayer.data.model.LiveStream) {
@@ -116,17 +118,15 @@ class LiveTvFragment : Fragment() {
         streamAdapter = LiveStreamAdapter(
             onClick = { stream ->
                 viewModel.selectStream(stream)
-                val url = viewModel.buildStreamUrl(stream.streamId)
-                playInPreview(url)
+                playInPreview(viewModel.buildStreamUrl(stream.streamId))
             },
             onLongPress = { stream ->
-                // ── Long press → Add to Favourites ──
                 val favItem = FavouriteItem(
-                    id        = "live_${stream.streamId}",
-                    name      = stream.name,
-                    icon      = stream.streamIcon,
-                    type      = "live",
-                    streamUrl = viewModel.buildStreamUrl(stream.streamId),
+                    id         = "live_${stream.streamId}",
+                    name       = stream.name,
+                    icon       = stream.streamIcon,
+                    type       = "live",
+                    streamUrl  = viewModel.buildStreamUrl(stream.streamId),
                     categoryId = stream.categoryId
                 )
                 val added = favouritesManager.toggle(favItem)
@@ -162,11 +162,10 @@ class LiveTvFragment : Fragment() {
                 launch {
                     viewModel.selectedStream.collect { stream ->
                         stream ?: return@collect
-                        _binding?.let { b ->
-                            b.tvChannelName.text = stream.name
-                            b.ivChannelLogo.loadUrl(stream.streamIcon)
-                            b.tvLiveBadge.visible()
-                        }
+                        _binding ?: return@collect
+                        binding.tvChannelName.text = stream.name
+                        binding.ivChannelLogo.loadUrl(stream.streamIcon)
+                        binding.tvLiveBadge.visible()
                     }
                 }
                 launch {
@@ -193,8 +192,15 @@ class LiveTvFragment : Fragment() {
         })
     }
 
-    override fun onResume() { super.onResume(); currentPreviewUrl?.let { previewPlayer?.play() } }
-    override fun onPause()  { super.onPause();  previewPlayer?.pause() }
+    override fun onResume() {
+        super.onResume()
+        currentPreviewUrl?.let { previewPlayer?.play() }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        previewPlayer?.pause()
+    }
 
     override fun onDestroyView() {
         super.onDestroyView()
