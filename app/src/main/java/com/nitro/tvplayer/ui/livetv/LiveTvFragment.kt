@@ -8,27 +8,31 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.nitro.tvplayer.databinding.FragmentLiveTvBinding
 import com.nitro.tvplayer.ui.player.PlayerActivity
+import com.nitro.tvplayer.utils.FavouriteItem
+import com.nitro.tvplayer.utils.FavouritesManager
 import com.nitro.tvplayer.utils.loadUrl
 import com.nitro.tvplayer.utils.visible
 import com.nitro.tvplayer.utils.gone
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class LiveTvFragment : Fragment() {
 
     private val viewModel: LiveTvViewModel by activityViewModels()
+    @Inject lateinit var favouritesManager: FavouritesManager
 
     private var _binding: FragmentLiveTvBinding? = null
     private val binding get() = _binding!!
@@ -36,7 +40,6 @@ class LiveTvFragment : Fragment() {
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var streamAdapter: LiveStreamAdapter
 
-    // ── Mini preview ExoPlayer ──
     private var previewPlayer: ExoPlayer? = null
     private var currentPreviewUrl: String? = null
 
@@ -56,20 +59,15 @@ class LiveTvFragment : Fragment() {
         setupSearch()
     }
 
-    // ─── Mini Preview Player ──────────────────────────────────
     private fun setupPreviewPlayer() {
         previewPlayer = ExoPlayer.Builder(requireContext()).build().also { exo ->
             binding.previewPlayerView.player = exo
             binding.previewPlayerView.useController = false
         }
-
-        // ── Tap the preview box → go fullscreen ──
         binding.previewPlayerView.setOnClickListener {
             val stream = viewModel.selectedStream.value ?: return@setOnClickListener
             openFullscreen(stream)
         }
-
-        // Also tap the black preview container
         binding.previewContainer.setOnClickListener {
             val stream = viewModel.selectedStream.value ?: return@setOnClickListener
             if (currentPreviewUrl != null) openFullscreen(stream)
@@ -77,17 +75,17 @@ class LiveTvFragment : Fragment() {
     }
 
     private fun playInPreview(url: String) {
-        if (currentPreviewUrl == url) return // already playing this
+        if (currentPreviewUrl == url) return
         currentPreviewUrl = url
         previewPlayer?.apply {
             setMediaItem(MediaItem.fromUri(Uri.parse(url)))
             prepare()
             playWhenReady = true
         }
-        // Show player view, hide channel logo
         binding.previewPlayerView.visible()
         binding.ivChannelLogo.gone()
         binding.tvClickToWatch.visible()
+        binding.tapHint.gone()
     }
 
     private fun openFullscreen(stream: com.nitro.tvplayer.data.model.LiveStream) {
@@ -95,10 +93,7 @@ class LiveTvFragment : Fragment() {
         val index   = streams.indexOfFirst { it.streamId == stream.streamId }
         val urls    = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
         val names   = ArrayList(streams.map { it.name })
-
-        // Stop preview before going fullscreen
         previewPlayer?.pause()
-
         startActivity(
             Intent(requireContext(), PlayerActivity::class.java).apply {
                 putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
@@ -109,7 +104,6 @@ class LiveTvFragment : Fragment() {
         )
     }
 
-    // ─── Adapters ─────────────────────────────────────────────
     private fun setupAdapters() {
         categoryAdapter = CategoryAdapter { category ->
             viewModel.filterByCategory(category)
@@ -119,41 +113,52 @@ class LiveTvFragment : Fragment() {
             adapter = categoryAdapter
         }
 
-        streamAdapter = LiveStreamAdapter { stream ->
-            // Tap channel → play in preview box
-            viewModel.selectStream(stream)
-            val url = viewModel.buildStreamUrl(stream.streamId)
-            playInPreview(url)
-        }
+        streamAdapter = LiveStreamAdapter(
+            onClick = { stream ->
+                viewModel.selectStream(stream)
+                val url = viewModel.buildStreamUrl(stream.streamId)
+                playInPreview(url)
+            },
+            onLongPress = { stream ->
+                // ── Long press → Add to Favourites ──
+                val favItem = FavouriteItem(
+                    id        = "live_${stream.streamId}",
+                    name      = stream.name,
+                    icon      = stream.streamIcon,
+                    type      = "live",
+                    streamUrl = viewModel.buildStreamUrl(stream.streamId),
+                    categoryId = stream.categoryId
+                )
+                val added = favouritesManager.toggle(favItem)
+                val msg = if (added)
+                    "⭐ \"${stream.name}\" added to Favourites"
+                else
+                    "\"${stream.name}\" removed from Favourites"
+                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+            }
+        )
         binding.rvStreams.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = streamAdapter
         }
     }
 
-    // ─── Observe ──────────────────────────────────────────────
     private fun observeViewModel() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-
                 launch {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
-                        // Highlight first category
-                        if (cats.isNotEmpty()) {
-                            categoryAdapter.setSelected(0)
-                        }
+                        if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
                     }
                 }
-
                 launch {
                     viewModel.streams.collect { streams ->
                         _binding ?: return@collect
                         streamAdapter.submitList(streams)
                     }
                 }
-
                 launch {
                     viewModel.selectedStream.collect { stream ->
                         stream ?: return@collect
@@ -164,28 +169,22 @@ class LiveTvFragment : Fragment() {
                         }
                     }
                 }
-
                 launch {
                     viewModel.loading.collect { loading ->
                         _binding?.progressBar?.visibility =
                             if (loading) View.VISIBLE else View.GONE
                     }
                 }
-
                 launch {
                     viewModel.error.collect { err ->
                         err ?: return@collect
-                        _binding?.tvError?.let { tv ->
-                            tv.text = err
-                            tv.visible()
-                        }
+                        _binding?.tvError?.let { tv -> tv.text = err; tv.visible() }
                     }
                 }
             }
         }
     }
 
-    // ─── Search ───────────────────────────────────────────────
     private fun setupSearch() {
         binding.etSearch.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { viewModel.search(s.toString()) }
@@ -194,22 +193,13 @@ class LiveTvFragment : Fragment() {
         })
     }
 
-    // ─── Lifecycle ────────────────────────────────────────────
-    override fun onResume() {
-        super.onResume()
-        // Resume preview if one was playing
-        currentPreviewUrl?.let { previewPlayer?.play() }
-    }
-
-    override fun onPause() {
-        super.onPause()
-        previewPlayer?.pause()
-    }
+    override fun onResume() { super.onResume(); currentPreviewUrl?.let { previewPlayer?.play() } }
+    override fun onPause()  { super.onPause();  previewPlayer?.pause() }
 
     override fun onDestroyView() {
         super.onDestroyView()
         previewPlayer?.release()
-        previewPlayer = null
+        previewPlayer     = null
         currentPreviewUrl = null
         _binding = null
     }
