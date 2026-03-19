@@ -33,6 +33,7 @@ class HomeFragment : Fragment() {
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
+    // Callback wired by HomeActivity
     var onNavigate: ((String) -> Unit)? = null
 
     override fun onCreateView(
@@ -48,7 +49,7 @@ class HomeFragment : Fragment() {
         setupUserInfo()
         setupClicks()
         observeViewModels()
-        // ── Kick off preloading all 3 sections in background ──
+        // Preload all 3 sections in background
         liveTvViewModel.loadAll()
         moviesViewModel.loadAll()
         seriesViewModel.loadAll()
@@ -73,38 +74,36 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupClicks() {
-        // Section cards → navigate to section
-        binding.cardLiveTv.setOnClickListener  { onNavigate?.invoke(HomeActivity.TAB_LIVE) }
-        binding.cardMovies.setOnClickListener  { onNavigate?.invoke(HomeActivity.TAB_MOVIES) }
-        binding.cardSeries.setOnClickListener  { onNavigate?.invoke(HomeActivity.TAB_SERIES) }
+        // ── Navigate to sections ──
+        binding.cardLiveTv.setOnClickListener  { onNavigate?.invoke("live") }
+        binding.cardMovies.setOnClickListener  { onNavigate?.invoke("movies") }
+        binding.cardSeries.setOnClickListener  { onNavigate?.invoke("series") }
+        binding.btnMasterSearch.setOnClickListener { onNavigate?.invoke("search") }
+        binding.cardSearch.setOnClickListener      { onNavigate?.invoke("search") }
+        binding.cardSettings.setOnClickListener    { onNavigate?.invoke("settings") }
+        binding.cardSubscription.setOnClickListener { onNavigate?.invoke("settings") }
 
-        // Quick action buttons
-        binding.btnMasterSearch.setOnClickListener   { onNavigate?.invoke(HomeActivity.TAB_SEARCH) }
-        binding.cardSearch.setOnClickListener        { onNavigate?.invoke(HomeActivity.TAB_SEARCH) }
-        binding.cardSettings.setOnClickListener      { onNavigate?.invoke(HomeActivity.TAB_SETTINGS) }
-        binding.cardSubscription.setOnClickListener  { onNavigate?.invoke(HomeActivity.TAB_SETTINGS) }
-
-        // Refresh buttons — force reload + animate spin
+        // ── Refresh buttons ──
         binding.btnRefreshLive.setOnClickListener {
             liveTvViewModel.forceRefresh()
             binding.circularLive.isSpinning = true
-            binding.btnRefreshLive.animate().rotation(
-                binding.btnRefreshLive.rotation + 360f
-            ).setDuration(600).start()
+            binding.btnRefreshLive.animate()
+                .rotation(binding.btnRefreshLive.rotation + 360f)
+                .setDuration(600).start()
         }
         binding.btnRefreshMovies.setOnClickListener {
             moviesViewModel.forceRefresh()
             binding.circularMovies.isSpinning = true
-            binding.btnRefreshMovies.animate().rotation(
-                binding.btnRefreshMovies.rotation + 360f
-            ).setDuration(600).start()
+            binding.btnRefreshMovies.animate()
+                .rotation(binding.btnRefreshMovies.rotation + 360f)
+                .setDuration(600).start()
         }
         binding.btnRefreshSeries.setOnClickListener {
             seriesViewModel.forceRefresh()
             binding.circularSeries.isSpinning = true
-            binding.btnRefreshSeries.animate().rotation(
-                binding.btnRefreshSeries.rotation + 360f
-            ).setDuration(600).start()
+            binding.btnRefreshSeries.animate()
+                .rotation(binding.btnRefreshSeries.rotation + 360f)
+                .setDuration(600).start()
         }
     }
 
@@ -112,12 +111,11 @@ class HomeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
 
-                // ── LIVE TV ──────────────────────────────────────
+                // ── Live TV ──────────────────────────────────────────
                 launch {
                     liveTvViewModel.loading.collect { loading ->
                         _binding ?: return@collect
                         if (loading) {
-                            // Spinning arc while loading
                             binding.circularLive.isSpinning = true
                             binding.circularLive.progress   = 0f
                         } else {
@@ -126,25 +124,24 @@ class HomeFragment : Fragment() {
                     }
                 }
                 launch {
-                    liveTvViewModel.allStreamsCount.collect { count ->
+                    liveTvViewModel.allStreamsCount.collect { count: Int ->
                         _binding ?: return@collect
                         if (count > 0) {
                             binding.tvLiveTvCount.text       = "$count Channels"
                             binding.tvLiveTvCount.visibility = View.VISIBLE
-                            // Full arc = loaded
-                            binding.circularLive.isSpinning = false
-                            binding.circularLive.progress   = 1f
+                            binding.circularLive.isSpinning  = false
+                            binding.circularLive.progress    = 1f
                         }
                     }
                 }
                 launch {
-                    liveTvViewModel.lastUpdated.collect { ts ->
+                    liveTvViewModel.lastUpdated.collect { ts: Long ->
                         _binding ?: return@collect
                         binding.tvLiveTvUpdated.text = formatLastUpdated(ts)
                     }
                 }
 
-                // ── MOVIES ───────────────────────────────────────
+                // ── Movies ───────────────────────────────────────────
                 launch {
                     moviesViewModel.loading.collect { loading ->
                         _binding ?: return@collect
@@ -157,24 +154,24 @@ class HomeFragment : Fragment() {
                     }
                 }
                 launch {
-                    moviesViewModel.allMoviesCount.collect { count ->
+                    moviesViewModel.allMoviesCount.collect { count: Int ->
                         _binding ?: return@collect
                         if (count > 0) {
-                            binding.tvMoviesCount.text       = "$count Movies"
-                            binding.tvMoviesCount.visibility = View.VISIBLE
-                            binding.circularMovies.isSpinning = false
-                            binding.circularMovies.progress   = 1f
+                            binding.tvMoviesCount.text         = "$count Movies"
+                            binding.tvMoviesCount.visibility   = View.VISIBLE
+                            binding.circularMovies.isSpinning  = false
+                            binding.circularMovies.progress    = 1f
                         }
                     }
                 }
                 launch {
-                    moviesViewModel.lastUpdated.collect { ts ->
+                    moviesViewModel.lastUpdated.collect { ts: Long ->
                         _binding ?: return@collect
                         binding.tvMoviesUpdated.text = formatLastUpdated(ts)
                     }
                 }
 
-                // ── SERIES ───────────────────────────────────────
+                // ── Series ───────────────────────────────────────────
                 launch {
                     seriesViewModel.loading.collect { loading ->
                         _binding ?: return@collect
@@ -187,18 +184,18 @@ class HomeFragment : Fragment() {
                     }
                 }
                 launch {
-                    seriesViewModel.allSeriesCount.collect { count ->
+                    seriesViewModel.allSeriesCount.collect { count: Int ->
                         _binding ?: return@collect
                         if (count > 0) {
-                            binding.tvSeriesCount.text       = "$count Series"
-                            binding.tvSeriesCount.visibility = View.VISIBLE
-                            binding.circularSeries.isSpinning = false
-                            binding.circularSeries.progress   = 1f
+                            binding.tvSeriesCount.text         = "$count Series"
+                            binding.tvSeriesCount.visibility   = View.VISIBLE
+                            binding.circularSeries.isSpinning  = false
+                            binding.circularSeries.progress    = 1f
                         }
                     }
                 }
                 launch {
-                    seriesViewModel.lastUpdated.collect { ts ->
+                    seriesViewModel.lastUpdated.collect { ts: Long ->
                         _binding ?: return@collect
                         binding.tvSeriesUpdated.text = formatLastUpdated(ts)
                     }
