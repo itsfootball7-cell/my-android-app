@@ -56,8 +56,9 @@ class LiveTvFragment : Fragment() {
         initPlayer()
         setupPreviewClick()
         observeViewModel()
-        setupSearch()
-        setupCategorySearch()  // ← category sidebar search
+        setupChannelSearch()
+        // Category search — only if the view exists in the layout
+        setupCategorySearchIfPresent()
     }
 
     private fun initPlayer() {
@@ -78,17 +79,15 @@ class LiveTvFragment : Fragment() {
 
     private fun setupPreviewClick() {
         val launch: () -> Unit = launch@{
-            val stream  = viewModel.selectedStream.value ?: return@launch
-            val streams = viewModel.streams.value
-            val index   = streams.indexOfFirst { it.streamId == stream.streamId }
-            val urls    = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
-            val names   = ArrayList(streams.map { it.name })
-            val sIds    = ArrayList(streams.map { it.streamId })
+            val stream    = viewModel.selectedStream.value ?: return@launch
+            val streams   = viewModel.streams.value
+            val index     = streams.indexOfFirst { it.streamId == stream.streamId }
+            val urls      = ArrayList(streams.map { viewModel.buildStreamUrl(it.streamId) })
+            val names     = ArrayList(streams.map { it.name })
+            val sIds      = ArrayList(streams.map { it.streamId })
             val iconsList = ArrayList(streams.map { it.streamIcon ?: "" })
-
             playerHolder.isInFullscreen = true
             binding.previewPlayerView.player = null
-
             startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
                 putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
                 putStringArrayListExtra(PlayerActivity.EXTRA_TITLES, names)
@@ -103,7 +102,7 @@ class LiveTvFragment : Fragment() {
         binding.previewContainer.setOnClickListener { if (playerHolder.currentUrl != null) launch() }
     }
 
-    private fun playInPreview(url: String, channelName: String) {
+    private fun playInPreview(url: String) {
         if (playerHolder.isInPip) return
         if (playerHolder.currentUrl == url) {
             if (binding.previewPlayerView.player == null)
@@ -131,12 +130,11 @@ class LiveTvFragment : Fragment() {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = categoryAdapter
         }
-
         streamAdapter = LiveStreamAdapter(
             onClick = { stream ->
                 viewModel.selectStream(stream)
                 playerHolder.currentChannelIcon = stream.streamIcon
-                playInPreview(viewModel.buildStreamUrl(stream.streamId), stream.name)
+                playInPreview(viewModel.buildStreamUrl(stream.streamId))
             },
             onLongPress = { stream ->
                 val added = favouritesManager.toggle(FavouriteItem(
@@ -178,7 +176,6 @@ class LiveTvFragment : Fragment() {
                         stream ?: return@collect
                         val b = _binding ?: return@collect
                         b.tvChannelName.text = stream.name
-                        // Letter fallback for channel logo
                         b.ivChannelLogo.loadUrl(stream.streamIcon, stream.name)
                         b.tvLiveBadge.visible()
                     }
@@ -193,8 +190,8 @@ class LiveTvFragment : Fragment() {
         }
     }
 
-    // ── Channel search ────────────────────────────────────────
-    private fun setupSearch() {
+    // ── Channel content search ─────────────────────────────────
+    private fun setupChannelSearch() {
         binding.etSearch.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { viewModel.search(s.toString()) }
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -202,26 +199,28 @@ class LiveTvFragment : Fragment() {
         })
     }
 
-    // ── Category sidebar search ───────────────────────────────
-    private fun setupCategorySearch() {
-        binding.etCategorySearch.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) {
-                categoryAdapter.filter(s.toString())
-            }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
+    // ── Category sidebar search — only if view ID exists ──────
+    private fun setupCategorySearchIfPresent() {
+        try {
+            // etCategorySearch is optional — only present if added to fragment_live_tv.xml
+            val field = binding.javaClass.getDeclaredField("etCategorySearch")
+            field.isAccessible = true
+            val et = field.get(binding) as? android.widget.EditText ?: return
+            et.addTextChangedListener(object : TextWatcher {
+                override fun afterTextChanged(s: Editable?) { categoryAdapter.filter(s.toString()) }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
+        } catch (e: Exception) {
+            // View doesn't exist in layout — that's fine, skip silently
+        }
     }
 
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
         if (hidden) {
-            if (!playerHolder.isInPip) {
-                binding.previewPlayerView.player = null
-                playerHolder.player?.stop()
-            } else {
-                binding.previewPlayerView.player = null
-            }
+            if (!playerHolder.isInPip) { binding.previewPlayerView.player = null; playerHolder.player?.stop() }
+            else binding.previewPlayerView.player = null
         } else {
             if (!playerHolder.isInPip && playerHolder.currentUrl != null) {
                 if (playerHolder.player == null)
@@ -248,14 +247,12 @@ class LiveTvFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
-        if (!playerHolder.isInFullscreen && !playerHolder.isInPip)
-            playerHolder.player?.pause()
+        if (!playerHolder.isInFullscreen && !playerHolder.isInPip) playerHolder.player?.pause()
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        binding.previewPlayerView.player = null
-        _binding = null
+        binding.previewPlayerView.player = null; _binding = null
     }
 
     override fun onDestroy() {
