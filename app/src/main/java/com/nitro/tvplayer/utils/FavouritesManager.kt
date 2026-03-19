@@ -5,75 +5,53 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
 data class FavouriteItem(
-    val id: String,           // unique ID: "live_123", "movie_456", "series_789"
-    val name: String,         // display name
-    val icon: String?,        // logo/poster URL
-    val type: String,         // "live" | "movie" | "series"
-    val streamUrl: String,    // direct playback URL
-    val categoryId: String?,  // for filtering
-    val extra: String? = null // extension for VOD, episode info for series
+    val id:         String,
+    val name:       String,
+    val icon:       String?,
+    val type:       String,         // "live" | "movie" | "series"
+    val streamUrl:  String,
+    val categoryId: String?,
+    val extra:      String? = null  // extension for movies, seriesId for series
 )
 
 @Singleton
 class FavouritesManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext context: Context
 ) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("nitro_favourites", Context.MODE_PRIVATE)
     private val gson = Gson()
+    private val type = object : TypeToken<MutableList<FavouriteItem>>() {}.type
 
-    // Live state flows so UI updates instantly
-    private val _favourites = MutableStateFlow<List<FavouriteItem>>(emptyList())
-    val favourites: StateFlow<List<FavouriteItem>> = _favourites
-
-    init {
-        _favourites.value = loadAll()
+    private fun load(): MutableList<FavouriteItem> {
+        val json = prefs.getString("favourites", null) ?: return mutableListOf()
+        return try { gson.fromJson(json, type) ?: mutableListOf() }
+        catch (e: Exception) { mutableListOf() }
     }
 
-    fun add(item: FavouriteItem) {
-        val current = _favourites.value.toMutableList()
-        if (current.none { it.id == item.id }) {
-            current.add(item)
-            _favourites.value = current
-            saveAll(current)
-        }
+    private fun save(list: MutableList<FavouriteItem>) {
+        prefs.edit().putString("favourites", gson.toJson(list)).apply()
     }
 
-    fun remove(id: String) {
-        val current = _favourites.value.filter { it.id != id }
-        _favourites.value = current
-        saveAll(current)
-    }
-
-    fun isFavourite(id: String): Boolean =
-        _favourites.value.any { it.id == id }
-
+    /** Toggle favourite — returns true if added, false if removed */
     fun toggle(item: FavouriteItem): Boolean {
-        return if (isFavourite(item.id)) {
-            remove(item.id); false
-        } else {
-            add(item); true
-        }
+        val list    = load()
+        val existing = list.indexOfFirst { it.id == item.id }
+        return if (existing >= 0) { list.removeAt(existing); save(list); false }
+        else { list.add(0, item); save(list); true }
     }
 
-    fun getByType(type: String): List<FavouriteItem> =
-        _favourites.value.filter { it.type == type }
+    fun isFavourite(id: String): Boolean = load().any { it.id == id }
 
-    private fun loadAll(): List<FavouriteItem> {
-        val json = prefs.getString("favourites", null) ?: return emptyList()
-        return try {
-            val type = object : TypeToken<List<FavouriteItem>>() {}.type
-            gson.fromJson(json, type) ?: emptyList()
-        } catch (e: Exception) { emptyList() }
-    }
+    fun getAll(): List<FavouriteItem> = load()
 
-    private fun saveAll(items: List<FavouriteItem>) {
-        prefs.edit().putString("favourites", gson.toJson(items)).apply()
-    }
+    fun getByType(type: String): List<FavouriteItem> = load().filter { it.type == type }
+
+    fun remove(id: String) { val list = load(); list.removeAll { it.id == id }; save(list) }
+
+    fun clear() { prefs.edit().remove("favourites").apply() }
 }
