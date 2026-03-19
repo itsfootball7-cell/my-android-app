@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/bg_primary"
+    android:padding="28dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="👋  Welcome to Nitro TV"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="6dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Here's how to get the most out of the app:"
+        android:textColor="#80FFFFFF"
+        android:textSize="12sp"
+        android:layout_marginBottom="24dp"/>
+
+    <!-- Tips -->
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
+        <TextView android:layout_width="40dp" android:layout_height="wrap_content"
+            android:text="👆" android:textSize="24sp"/>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Long press → Add to Favourites"
+                android:textColor="#FFFFFF" android:textSize="13sp" android:textStyle="bold"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Long press any channel, movie or series to save it"
+                android:textColor="#60FFFFFF" android:textSize="11sp"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
+        <TextView android:layout_width="40dp" android:layout_height="wrap_content"
+            android:text="👆" android:textSize="24sp"/>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Tap preview → Fullscreen"
+                android:textColor="#FFFFFF" android:textSize="13sp" android:textStyle="bold"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Tap the mini player on Live TV to go fullscreen"
+                android:textColor="#60FFFFFF" android:textSize="11sp"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
+        <TextView android:layout_width="40dp" android:layout_height="wrap_content"
+            android:text="↕️" android:textSize="24sp"/>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Swipe up/down in player → Volume &amp; Brightness"
+                android:textColor="#FFFFFF" android:textSize="13sp" android:textStyle="bold"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Left side = brightness · Right side = volume"
+                android:textColor="#60FFFFFF" android:textSize="11sp"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="16dp">
+        <TextView android:layout_width="40dp" android:layout_height="wrap_content"
+            android:text="⏱" android:textSize="24sp"/>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Sleep Timer in the player"
+                android:textColor="#FFFFFF" android:textSize="13sp" android:textStyle="bold"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Auto-stop playback after 15/30/60/90 minutes"
+                android:textColor="#60FFFFFF" android:textSize="11sp"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:gravity="center_vertical" android:layout_marginBottom="24dp">
+        <TextView android:layout_width="40dp" android:layout_height="wrap_content"
+            android:text="🏠" android:textSize="24sp"/>
+        <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Home tab preloads everything"
+                android:textColor="#FFFFFF" android:textSize="13sp" android:textStyle="bold"/>
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="Open Home first to cache all content — tabs load instantly"
+                android:textColor="#60FFFFFF" android:textSize="11sp"/>
+        </LinearLayout>
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/btnGotIt"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="Got it — Let's Go! 🚀"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:background="@drawable/btn_primary"/>
+
+</LinearLayout>

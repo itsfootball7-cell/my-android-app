@@ -1,0 +1,218 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/bg_primary"
+    android:padding="20dp">
+
+    <!-- Title + Favourite -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="16dp">
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:maxLines="2"
+            android:ellipsize="end"/>
+
+        <TextView
+            android:id="@+id/btnFavourite"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:text="🤍"
+            android:textSize="22sp"
+            android:gravity="center"
+            android:layout_marginStart="12dp"/>
+
+    </LinearLayout>
+
+    <!-- Poster + Meta -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp">
+
+        <!-- Poster -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginEnd="16dp">
+
+            <ImageView
+                android:id="@+id/ivPoster"
+                android:layout_width="120dp"
+                android:layout_height="168dp"
+                android:scaleType="centerCrop"
+                android:background="@drawable/poster_placeholder"/>
+
+            <!-- Star rating below poster -->
+            <RatingBar
+                android:id="@+id/ratingBar"
+                style="?android:attr/ratingBarStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:numStars="5"
+                android:stepSize="0.5"
+                android:isIndicator="true"
+                android:progressTint="@color/accent_orange"
+                android:layout_marginTop="6dp"
+                android:layout_gravity="center_horizontal"/>
+
+            <TextView
+                android:id="@+id/tvRatingNumber"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFB300"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:layout_gravity="center_horizontal"
+                android:layout_marginTop="2dp"/>
+
+        </LinearLayout>
+
+        <!-- Meta rows -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <!-- Release Date -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="32dp"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView android:layout_width="90dp" android:layout_height="wrap_content"
+                    android:text="Release Date:" android:textColor="#60FFFFFF" android:textSize="12sp"/>
+                <TextView android:id="@+id/tvReleaseDate"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" android:textSize="12sp"/>
+            </LinearLayout>
+
+            <!-- Duration -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="32dp"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView android:layout_width="90dp" android:layout_height="wrap_content"
+                    android:text="Duration:" android:textColor="#60FFFFFF" android:textSize="12sp"/>
+                <TextView android:id="@+id/tvDuration"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" android:textSize="12sp"
+                    android:background="@drawable/pill_dark"
+                    android:paddingStart="10dp" android:paddingEnd="10dp" android:paddingTop="2dp" android:paddingBottom="2dp"/>
+            </LinearLayout>
+
+            <!-- Genre -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="32dp"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView android:layout_width="90dp" android:layout_height="wrap_content"
+                    android:text="Genre:" android:textColor="#60FFFFFF" android:textSize="12sp"/>
+                <TextView android:id="@+id/tvGenre"
+                    android:layout_width="wrap_content" android:layout_height="wrap_content"
+                    android:textColor="#FFFFFF" android:textSize="12sp"/>
+            </LinearLayout>
+
+            <!-- Director -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="32dp"
+                android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView android:layout_width="90dp" android:layout_height="wrap_content"
+                    android:text="Directed By:" android:textColor="#60FFFFFF" android:textSize="12sp"/>
+                <TextView android:id="@+id/tvDirector"
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="#FFFFFF" android:textSize="12sp"
+                    android:maxLines="1" android:ellipsize="end"/>
+            </LinearLayout>
+
+            <!-- Cast -->
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:orientation="horizontal" android:gravity="top" android:layout_marginTop="2dp">
+                <TextView android:layout_width="90dp" android:layout_height="wrap_content"
+                    android:text="Cast:" android:textColor="#60FFFFFF" android:textSize="12sp"/>
+                <TextView android:id="@+id/tvCast"
+                    android:layout_width="0dp" android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:textColor="#FFFFFF" android:textSize="12sp"
+                    android:maxLines="2" android:ellipsize="end"/>
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Continue watching progress bar -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:max="100"
+        android:progressTint="@color/accent_orange"
+        android:progressBackgroundTint="#20FFFFFF"
+        android:visibility="gone"
+        android:layout_marginBottom="2dp"/>
+
+    <TextView
+        android:id="@+id/tvResumeFrom"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#FFB300"
+        android:textSize="10sp"
+        android:layout_marginBottom="12dp"
+        android:visibility="gone"/>
+
+    <!-- Plot -->
+    <TextView
+        android:id="@+id/tvPlot"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#CCFFFFFF"
+        android:textSize="12sp"
+        android:lineSpacingMultiplier="1.4"
+        android:layout_marginBottom="20dp"/>
+
+    <!-- Action buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnPlay"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="▶  Play"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="@drawable/btn_primary"
+            android:layout_marginEnd="10dp"/>
+
+        <TextView
+            android:id="@+id/btnTrailer"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:text="▷  Watch Trailer"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:background="@drawable/btn_player_control"
+            android:visibility="gone"/>
+
+    </LinearLayout>
+
+</LinearLayout>

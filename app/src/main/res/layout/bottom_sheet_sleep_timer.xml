@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/bg_primary"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="⏱  Sleep Timer"
+        android:textColor="#FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="20dp"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="12dp">
+
+        <TextView android:id="@+id/btn15"
+            android:layout_width="0dp" android:layout_height="44dp"
+            android:layout_weight="1" android:text="15 min"
+            android:textColor="#FFFFFF" android:textSize="13sp"
+            android:gravity="center" android:background="@drawable/btn_player_control"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView android:id="@+id/btn30"
+            android:layout_width="0dp" android:layout_height="44dp"
+            android:layout_weight="1" android:text="30 min"
+            android:textColor="#FFFFFF" android:textSize="13sp"
+            android:gravity="center" android:background="@drawable/btn_player_control"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView android:id="@+id/btn45"
+            android:layout_width="0dp" android:layout_height="44dp"
+            android:layout_weight="1" android:text="45 min"
+            android:textColor="#FFFFFF" android:textSize="13sp"
+            android:gravity="center" android:background="@drawable/btn_player_control"/>
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="16dp">
+
+        <TextView android:id="@+id/btn60"
+            android:layout_width="0dp" android:layout_height="44dp"
+            android:layout_weight="1" android:text="60 min"
+            android:textColor="#FFFFFF" android:textSize="13sp"
+            android:gravity="center" android:background="@drawable/btn_player_control"
+            android:layout_marginEnd="8dp"/>
+
+        <TextView android:id="@+id/btn90"
+            android:layout_width="0dp" android:layout_height="44dp"
+            android:layout_weight="1" android:text="90 min"
+            android:textColor="#FFFFFF" android:textSize="13sp"
+            android:gravity="center" android:background="@drawable/btn_player_control"
+            android:layout_marginEnd="8dp"/>
+
+        <View android:layout_width="0dp" android:layout_height="44dp" android:layout_weight="1"/>
+
+    </LinearLayout>
+
+    <TextView android:id="@+id/btnCancelTimer"
+        android:layout_width="match_parent" android:layout_height="44dp"
+        android:text="✕  Cancel Timer"
+        android:textColor="#FF5252" android:textSize="13sp"
+        android:gravity="center" android:background="@drawable/btn_danger"/>
+
+</LinearLayout>
