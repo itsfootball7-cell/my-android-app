@@ -29,45 +29,46 @@ class LiveTvViewModel @Inject constructor(
     val error            = MutableStateFlow<String?>(null)
     val previewActive    = MutableStateFlow(false)
 
+    // Required by HomeFragment
+    val allStreamsCount   = MutableStateFlow(0)
+    val lastUpdated      = MutableStateFlow(0L)
+
     private val _allStreams = MutableStateFlow<List<LiveStream>>(emptyList())
     private var dataLoaded  = false
 
     init { loadAll() }
 
-    fun loadAll() {
-        if (dataLoaded) return
-        viewModelScope.launch {
-            loading.value = true
-            error.value   = null
-            try {
-                val catsDeferred    = async { repo.getLiveCategories() }
-                val streamsDeferred = async { repo.getLiveStreams() }
+    fun loadAll() { if (!dataLoaded) fetchData() }
 
-                catsDeferred.await().onSuccess { catList ->
-                    val special = listOf(
-                        Category(CAT_ALL,        "All",        0),
+    fun forceRefresh() { dataLoaded = false; repo.clearLiveCache(); fetchData() }
+
+    private fun fetchData() {
+        viewModelScope.launch {
+            loading.value = true; error.value = null
+            try {
+                val catsD    = async { repo.getLiveCategories() }
+                val streamsD = async { repo.getLiveStreams() }
+
+                catsD.await().onSuccess { list ->
+                    categories.value = listOf(
+                        Category(CAT_ALL, "All", 0),
                         Category(CAT_FAVOURITES, "Favourites", 0)
-                    )
-                    categories.value       = special + catList
-                    selectedCategory.value = catList.firstOrNull()
+                    ) + list
+                    selectedCategory.value = list.firstOrNull()
                 }
 
-                streamsDeferred.await().onSuccess { list ->
-                    _allStreams.value = list
-                    val firstCatId = selectedCategory.value?.categoryId
-                    streams.value = if (firstCatId != null)
-                        list.filter { it.categoryId == firstCatId }
-                    else list
+                streamsD.await().onSuccess { list ->
+                    _allStreams.value     = list
+                    allStreamsCount.value = list.size
+                    lastUpdated.value    = System.currentTimeMillis()
+                    val catId = selectedCategory.value?.categoryId
+                    streams.value = if (catId != null) list.filter { it.categoryId == catId } else list
                     if (streams.value.isNotEmpty()) selectedStream.value = streams.value.first()
                     dataLoaded = true
-                }.onFailure { e ->
-                    error.value = e.message ?: "Failed to load channels"
-                }
+                }.onFailure { e -> error.value = e.message }
             } catch (e: Exception) {
-                error.value = e.message ?: "Unexpected error"
-            } finally {
-                loading.value = false
-            }
+                error.value = e.message
+            } finally { loading.value = false }
         }
     }
 
@@ -76,9 +77,8 @@ class LiveTvViewModel @Inject constructor(
         val filtered = when (category.categoryId) {
             CAT_ALL -> _allStreams.value
             CAT_FAVOURITES -> {
-                val favIds = favouritesManager.getByType("live")
-                    .mapNotNull { it.id.removePrefix("live_").toIntOrNull() }
-                _allStreams.value.filter { it.streamId in favIds }
+                val ids = favouritesManager.getByType("live").mapNotNull { it.id.removePrefix("live_").toIntOrNull() }
+                _allStreams.value.filter { it.streamId in ids }
             }
             else -> _allStreams.value.filter { it.categoryId == category.categoryId }
         }
@@ -86,18 +86,13 @@ class LiveTvViewModel @Inject constructor(
         if (filtered.isNotEmpty()) { selectedStream.value = filtered.first(); previewActive.value = false }
     }
 
-    fun selectStream(stream: LiveStream) {
-        selectedStream.value = stream
-        previewActive.value  = true
-    }
+    fun selectStream(stream: LiveStream) { selectedStream.value = stream; previewActive.value = true }
 
-    fun search(query: String) {
-        if (query.isEmpty()) { filterByCategory(selectedCategory.value ?: return); return }
-        streams.value = _allStreams.value.filter { it.name.contains(query, ignoreCase = true) }
+    fun search(q: String) {
+        if (q.isEmpty()) { filterByCategory(selectedCategory.value ?: return); return }
+        streams.value = _allStreams.value.filter { it.name.contains(q, ignoreCase = true) }
     }
 
     fun buildStreamUrl(streamId: Int) = repo.buildLiveUrl(streamId)
-
-    // Used by SearchFragment
-    fun getAllStreams(): List<LiveStream> = _allStreams.value
+    fun getAllStreams() = _allStreams.value
 }
