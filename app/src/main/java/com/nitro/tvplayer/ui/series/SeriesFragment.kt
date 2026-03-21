@@ -47,9 +47,9 @@ class SeriesFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        buildAdapters()
-        observe()
+        setupAdapters()
         setupSearch()
+        startObserving()
         vm.loadAll()
     }
 
@@ -58,36 +58,36 @@ class SeriesFragment : Fragment() {
         if (!hidden) vm.loadAll()
     }
 
-    private fun buildAdapters() {
-        // Categories
+    private fun setupAdapters() {
         catAdapter = CategoryAdapter { cat -> vm.filterByCategory(cat) }
-        b.rvCategories.layoutManager = LinearLayoutManager(requireContext())
-        b.rvCategories.adapter       = catAdapter
+        b.rvCategories.apply {
+            layoutManager = LinearLayoutManager(requireContext()); adapter = catAdapter
+        }
 
-        // Series grid — uses ItemSeriesCardBinding
         serAdapter = SeriesAdapter(
-            onClick = { series -> vm.selectSeries(series) },
-            onLongPress = { series ->
+            onClick = { s -> vm.selectSeries(s) },
+            onLongPress = { s ->
                 val added = fav.toggle(FavouriteItem(
-                    id = "series_${series.seriesId}", name = series.name,
-                    icon = series.cover, type = "series",
-                    streamUrl = "", categoryId = series.categoryId
+                    id = "series_${s.seriesId}", name = s.name, icon = s.cover,
+                    type = "series", streamUrl = "", categoryId = s.categoryId
                 ))
                 Toast.makeText(requireContext(),
-                    if (added) "⭐ Added to Favourites" else "Removed from Favourites",
+                    if (added) "⭐ Favourites" else "Removed from Favourites",
                     Toast.LENGTH_SHORT).show()
             }
         )
-        b.rvSeries.layoutManager = GridLayoutManager(requireContext(), 3)
-        b.rvSeries.adapter       = serAdapter
+        b.rvSeries.apply {
+            layoutManager = GridLayoutManager(requireContext(), 3); adapter = serAdapter
+        }
 
-        // Season chips
         seasonAdapter = SeasonAdapter { season -> vm.selectSeason(season) }
-        b.rvSeasons.layoutManager =
-            LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
-        b.rvSeasons.adapter = seasonAdapter
+        b.rvSeasons.apply {
+            layoutManager = LinearLayoutManager(
+                requireContext(), LinearLayoutManager.HORIZONTAL, false
+            )
+            adapter = seasonAdapter
+        }
 
-        // Episodes
         epAdapter = EpisodeAdapter { ep ->
             val eps    = vm.episodes.value
             val idx    = eps.indexOfFirst { it.id == ep.id }
@@ -95,7 +95,6 @@ class SeriesFragment : Fragment() {
             val sName  = vm.selectedSeries.value?.name ?: ""
             val season = vm.selectedSeason.value
             val cover  = vm.selectedSeries.value?.cover ?: ""
-
             startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
                 putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST,
                     ArrayList(eps.map { vm.buildEpisodeUrl(it.id, it.extension ?: "mkv") }))
@@ -103,33 +102,31 @@ class SeriesFragment : Fragment() {
                     ArrayList(eps.map { "$sName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}" }))
                 putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
                     ArrayList(eps.map { "series_${sId}_ep_${it.id}" }))
-                putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,
-                    ArrayList(eps.map { cover }))
+                putStringArrayListExtra(PlayerActivity.EXTRA_ICONS, ArrayList(eps.map { cover }))
                 putExtra(PlayerActivity.EXTRA_START_INDEX, idx.coerceAtLeast(0))
                 putExtra(PlayerActivity.EXTRA_TYPE, "series")
             })
         }
-        b.rvEpisodes.layoutManager = LinearLayoutManager(requireContext())
-        b.rvEpisodes.adapter       = epAdapter
+        b.rvEpisodes.apply {
+            layoutManager = LinearLayoutManager(requireContext()); adapter = epAdapter
+        }
     }
 
-    private fun observe() {
-        // Categories → sidebar
+    private fun startObserving() {
         lifecycleScope.launch {
             vm.categories.collect { cats ->
                 if (_b == null) return@collect
                 catAdapter.submitList(cats)
-                val firstReal = cats.indexOfFirst {
+                val idx = cats.indexOfFirst {
                     it.categoryId != SERIES_CAT_ALL &&
                     it.categoryId != SERIES_CAT_FAVOURITES &&
                     it.categoryId != SERIES_CAT_CONTINUE &&
                     it.categoryId != SERIES_CAT_RECENTLY_ADDED
                 }
-                if (firstReal >= 0) catAdapter.setSelected(firstReal)
+                if (idx >= 0) catAdapter.setSelected(idx)
             }
         }
 
-        // Series list → grid  (THE most important one)
         lifecycleScope.launch {
             vm.seriesList.collect { list ->
                 if (_b == null) return@collect
@@ -137,7 +134,6 @@ class SeriesFragment : Fragment() {
             }
         }
 
-        // Selected series → detail panel on right
         lifecycleScope.launch {
             vm.selectedSeries.collect { s ->
                 if (_b == null || s == null) return@collect
@@ -148,13 +144,11 @@ class SeriesFragment : Fragment() {
                 ).joinToString(" • ")
                 val r = s.rating5 ?: s.rating?.toDoubleOrNull()
                 b.tvSeriesRating.text = if (r != null && r > 0) "★ ${"%.1f".format(r)}" else ""
-                b.tvSeriesPlot.text   =
-                    s.plot?.takeIf { it.isNotBlank() } ?: "No description available."
+                b.tvSeriesPlot.text   = s.plot?.takeIf { it.isNotBlank() } ?: "No description."
                 b.ivSeriesCover.loadUrl(s.cover, s.name)
             }
         }
 
-        // Seasons
         lifecycleScope.launch {
             vm.seasons.collect { seasons ->
                 if (_b == null) return@collect
@@ -163,7 +157,6 @@ class SeriesFragment : Fragment() {
             }
         }
 
-        // Episodes
         lifecycleScope.launch {
             vm.episodes.collect { eps ->
                 if (_b == null) return@collect
@@ -171,11 +164,10 @@ class SeriesFragment : Fragment() {
             }
         }
 
-        // Loading
         lifecycleScope.launch {
-            vm.loading.collect { loading ->
+            vm.loading.collect { v ->
                 if (_b == null) return@collect
-                b.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
+                b.progressBar.visibility = if (v) View.VISIBLE else View.GONE
             }
         }
     }
@@ -193,16 +185,14 @@ class SeriesFragment : Fragment() {
         b.btnClearSearch.setOnClickListener { closeSearch() }
         b.etSearch.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { vm.search(s?.toString() ?: "") }
-            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
-            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         })
     }
 
     private fun closeSearch() {
-        searchOpen = false
-        b.etSearch.setText("")
-        b.searchBarContainer.visibility = View.GONE
-        vm.search("")
+        searchOpen = false; b.etSearch.setText("")
+        b.searchBarContainer.visibility = View.GONE; vm.search("")
         ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
             ?.hideSoftInputFromWindow(b.etSearch.windowToken, 0)
     }

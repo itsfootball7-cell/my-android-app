@@ -14,8 +14,6 @@ import com.nitro.tvplayer.databinding.ItemSeasonBinding
 import com.nitro.tvplayer.databinding.ItemEpisodeBinding
 import com.nitro.tvplayer.utils.loadUrl
 
-// ── Series Grid Adapter ───────────────────────────────────────
-// Uses ItemSeriesCardBinding (item_series_card.xml) — NOT item_movie.xml
 class SeriesAdapter(
     private val onClick:     (SeriesItem) -> Unit,
     private val onLongPress: ((SeriesItem) -> Unit)? = null
@@ -30,38 +28,35 @@ class SeriesAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
-        with(holder.b) {
-            tvSeriesName.text = item.name
-            ivSeriesPoster.loadUrl(item.cover, item.name)
+        holder.b.tvSeriesName.text = item.name
+        holder.b.ivSeriesPoster.loadUrl(item.cover, item.name)
 
-            // Rating badge
-            val rating = item.rating5?.let { "%.0f".format(it) }
-                ?: item.rating?.toDoubleOrNull()?.let { "%.0f".format(it) }
-            if (!rating.isNullOrBlank() && rating != "0") {
-                tvSeriesRatingBadge.text       = rating
-                tvSeriesRatingBadge.visibility = View.VISIBLE
-                val rv = rating.toIntOrNull() ?: 0
-                tvSeriesRatingBadge.setBackgroundResource(when {
-                    rv >= 7 -> R.drawable.badge_green
-                    rv >= 5 -> R.drawable.badge_orange
-                    else    -> R.drawable.badge_red
-                })
-            } else {
-                tvSeriesRatingBadge.visibility = View.GONE
-            }
+        val rating = item.rating5?.let { "%.0f".format(it) }
+            ?: item.rating?.toDoubleOrNull()?.let { "%.0f".format(it) }
+        if (!rating.isNullOrBlank() && rating != "0") {
+            holder.b.tvSeriesRatingBadge.text       = rating
+            holder.b.tvSeriesRatingBadge.visibility = View.VISIBLE
+            holder.b.tvSeriesRatingBadge.setBackgroundResource(
+                when (rating.toIntOrNull() ?: 0) {
+                    in 7..10 -> R.drawable.badge_green
+                    in 5..6  -> R.drawable.badge_orange
+                    else     -> R.drawable.badge_red
+                }
+            )
+        } else {
+            holder.b.tvSeriesRatingBadge.visibility = View.GONE
+        }
 
-            root.isSelected = position == selectedPos
-            root.setOnClickListener {
-                val prev = selectedPos
-                selectedPos = holder.bindingAdapterPosition
-                notifyItemChanged(prev)
-                notifyItemChanged(selectedPos)
-                onClick(item)
-            }
-            root.setOnLongClickListener {
-                onLongPress?.invoke(item)
-                true
-            }
+        holder.b.root.isSelected = position == selectedPos
+        holder.b.root.setOnClickListener {
+            val prev = selectedPos
+            selectedPos = holder.bindingAdapterPosition
+            notifyItemChanged(prev)
+            notifyItemChanged(selectedPos)
+            onClick(item)
+        }
+        holder.b.root.setOnLongClickListener {
+            onLongPress?.invoke(item); true
         }
     }
 
@@ -73,28 +68,24 @@ class SeriesAdapter(
     }
 }
 
-// ── Season Chip Adapter ───────────────────────────────────────
 class SeasonAdapter(
     private val onClick: (String) -> Unit
 ) : ListAdapter<String, SeasonAdapter.VH>(DIFF) {
 
     private var selectedPos = 0
-
     inner class VH(val b: ItemSeasonBinding) : RecyclerView.ViewHolder(b.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemSeasonBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val item = getItem(position)
-        holder.b.tvSeason.text   = "S$item"
+        holder.b.tvSeason.text   = "S${getItem(position)}"
         holder.b.root.isSelected = position == selectedPos
         holder.b.root.setOnClickListener {
             val prev = selectedPos
             selectedPos = holder.bindingAdapterPosition
-            notifyItemChanged(prev)
-            notifyItemChanged(selectedPos)
-            onClick(item)
+            notifyItemChanged(prev); notifyItemChanged(selectedPos)
+            onClick(getItem(position))
         }
     }
 
@@ -106,7 +97,6 @@ class SeasonAdapter(
     }
 }
 
-// ── Episode List Adapter ──────────────────────────────────────
 class EpisodeAdapter(
     private val onClick: (Episode) -> Unit
 ) : ListAdapter<Episode, EpisodeAdapter.VH>(DIFF) {
