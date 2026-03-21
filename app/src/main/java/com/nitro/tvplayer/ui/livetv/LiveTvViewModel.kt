@@ -29,20 +29,31 @@ class LiveTvViewModel @Inject constructor(
     val error            = MutableStateFlow<String?>(null)
     val previewActive    = MutableStateFlow(false)
 
-    // Required by HomeFragment
-    val allStreamsCount   = MutableStateFlow(0)
-    val lastUpdated      = MutableStateFlow(0L)
+    // Dashboard stats
+    val allStreamsCount = MutableStateFlow(0)
+    val lastUpdated    = MutableStateFlow(0L)
 
-    private val _allStreams = MutableStateFlow<List<LiveStream>>(emptyList())
-    private var dataLoaded  = false
+    private val _allStreams    = MutableStateFlow<List<LiveStream>>(emptyList())
+    private var dataLoaded     = false
+    private var fetchInProgress = false
 
     init { loadAll() }
 
-    fun loadAll() { if (!dataLoaded) fetchData() }
+    /** Call from HomeFragment preload AND from LiveTvFragment onViewCreated */
+    fun loadAll() {
+        if (dataLoaded && _allStreams.value.isNotEmpty()) return
+        if (fetchInProgress) return
+        fetchData()
+    }
 
-    fun forceRefresh() { dataLoaded = false; repo.clearLiveCache(); fetchData() }
+    fun forceRefresh() {
+        dataLoaded = false; fetchInProgress = false
+        repo.clearLiveCache(); fetchData()
+    }
 
     private fun fetchData() {
+        if (fetchInProgress) return
+        fetchInProgress = true
         viewModelScope.launch {
             loading.value = true; error.value = null
             try {
@@ -66,18 +77,21 @@ class LiveTvViewModel @Inject constructor(
                     if (streams.value.isNotEmpty()) selectedStream.value = streams.value.first()
                     dataLoaded = true
                 }.onFailure { e -> error.value = e.message }
+
             } catch (e: Exception) {
                 error.value = e.message
-            } finally { loading.value = false }
+            } finally { loading.value = false; fetchInProgress = false }
         }
     }
 
     fun filterByCategory(category: Category) {
         selectedCategory.value = category
+        if (_allStreams.value.isEmpty()) { loadAll(); return }
         val filtered = when (category.categoryId) {
             CAT_ALL -> _allStreams.value
             CAT_FAVOURITES -> {
-                val ids = favouritesManager.getByType("live").mapNotNull { it.id.removePrefix("live_").toIntOrNull() }
+                val ids = favouritesManager.getByType("live")
+                    .mapNotNull { it.id.removePrefix("live_").toIntOrNull() }
                 _allStreams.value.filter { it.streamId in ids }
             }
             else -> _allStreams.value.filter { it.categoryId == category.categoryId }
