@@ -2,6 +2,8 @@ package com.nitro.tvplayer.ui.series
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.Editable
+import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -26,16 +28,16 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class SeriesFragment : Fragment() {
 
-    private val viewModel: SeriesViewModel by activityViewModels()
-    @Inject lateinit var favouritesManager: FavouritesManager
+    private val vm: SeriesViewModel by activityViewModels()
+    @Inject lateinit var fav: FavouritesManager
 
     private var _b: FragmentSeriesBinding? = null
     private val b get() = _b!!
 
-    private lateinit var catAdapter:     CategoryAdapter
-    private lateinit var seriesAdapter:  SeriesAdapter
-    private lateinit var seasonAdapter:  SeasonAdapter
-    private lateinit var episodeAdapter: EpisodeAdapter
+    private lateinit var catAdapter:    CategoryAdapter
+    private lateinit var serAdapter:    SeriesAdapter
+    private lateinit var seasonAdapter: SeasonAdapter
+    private lateinit var epAdapter:     EpisodeAdapter
 
     private var searchOpen = false
 
@@ -46,56 +48,57 @@ class SeriesFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         buildAdapters()
-        startObserving()
+        observe()
         setupSearch()
-        viewModel.loadAll()   // kick off data load
+        vm.loadAll()
     }
 
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
-        if (!hidden) viewModel.loadAll()   // re-trigger if needed
+        if (!hidden) vm.loadAll()
     }
 
-    // ── Adapters ──────────────────────────────────────────────
     private fun buildAdapters() {
-        catAdapter = CategoryAdapter { cat -> viewModel.filterByCategory(cat) }
+        // Categories
+        catAdapter = CategoryAdapter { cat -> vm.filterByCategory(cat) }
         b.rvCategories.layoutManager = LinearLayoutManager(requireContext())
         b.rvCategories.adapter       = catAdapter
 
-        seriesAdapter = SeriesAdapter(
-            onClick = { series -> viewModel.selectSeries(series) },
+        // Series grid — uses ItemSeriesCardBinding
+        serAdapter = SeriesAdapter(
+            onClick = { series -> vm.selectSeries(series) },
             onLongPress = { series ->
-                val added = favouritesManager.toggle(FavouriteItem(
+                val added = fav.toggle(FavouriteItem(
                     id = "series_${series.seriesId}", name = series.name,
                     icon = series.cover, type = "series",
                     streamUrl = "", categoryId = series.categoryId
                 ))
-                Toast.makeText(
-                    requireContext(),
+                Toast.makeText(requireContext(),
                     if (added) "⭐ Added to Favourites" else "Removed from Favourites",
-                    Toast.LENGTH_SHORT
-                ).show()
+                    Toast.LENGTH_SHORT).show()
             }
         )
         b.rvSeries.layoutManager = GridLayoutManager(requireContext(), 3)
-        b.rvSeries.adapter       = seriesAdapter
+        b.rvSeries.adapter       = serAdapter
 
-        seasonAdapter = SeasonAdapter { season -> viewModel.selectSeason(season) }
+        // Season chips
+        seasonAdapter = SeasonAdapter { season -> vm.selectSeason(season) }
         b.rvSeasons.layoutManager =
             LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
         b.rvSeasons.adapter = seasonAdapter
 
-        episodeAdapter = EpisodeAdapter { ep ->
-            val eps    = viewModel.episodes.value
+        // Episodes
+        epAdapter = EpisodeAdapter { ep ->
+            val eps    = vm.episodes.value
             val idx    = eps.indexOfFirst { it.id == ep.id }
-            val sId    = viewModel.selectedSeries.value?.seriesId ?: 0
-            val sName  = viewModel.selectedSeries.value?.name ?: ""
-            val season = viewModel.selectedSeason.value
-            val cover  = viewModel.selectedSeries.value?.cover ?: ""
+            val sId    = vm.selectedSeries.value?.seriesId ?: 0
+            val sName  = vm.selectedSeries.value?.name ?: ""
+            val season = vm.selectedSeason.value
+            val cover  = vm.selectedSeries.value?.cover ?: ""
 
             startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
                 putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST,
-                    ArrayList(eps.map { viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv") }))
+                    ArrayList(eps.map { vm.buildEpisodeUrl(it.id, it.extension ?: "mkv") }))
                 putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,
                     ArrayList(eps.map { "$sName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}" }))
                 putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
@@ -107,37 +110,36 @@ class SeriesFragment : Fragment() {
             })
         }
         b.rvEpisodes.layoutManager = LinearLayoutManager(requireContext())
-        b.rvEpisodes.adapter       = episodeAdapter
+        b.rvEpisodes.adapter       = epAdapter
     }
 
-    // ── Observers — simple, explicit, no shortcuts ────────────
-    private fun startObserving() {
-        // Categories
+    private fun observe() {
+        // Categories → sidebar
         lifecycleScope.launch {
-            viewModel.categories.collect { cats ->
+            vm.categories.collect { cats ->
                 if (_b == null) return@collect
                 catAdapter.submitList(cats)
-                val firstReal = cats.indexOfFirst { c ->
-                    c.categoryId != SERIES_CAT_ALL &&
-                    c.categoryId != SERIES_CAT_FAVOURITES &&
-                    c.categoryId != SERIES_CAT_CONTINUE &&
-                    c.categoryId != SERIES_CAT_RECENTLY_ADDED
+                val firstReal = cats.indexOfFirst {
+                    it.categoryId != SERIES_CAT_ALL &&
+                    it.categoryId != SERIES_CAT_FAVOURITES &&
+                    it.categoryId != SERIES_CAT_CONTINUE &&
+                    it.categoryId != SERIES_CAT_RECENTLY_ADDED
                 }
                 if (firstReal >= 0) catAdapter.setSelected(firstReal)
             }
         }
 
-        // Series list — the key one
+        // Series list → grid  (THE most important one)
         lifecycleScope.launch {
-            viewModel.seriesList.collect { list ->
+            vm.seriesList.collect { list ->
                 if (_b == null) return@collect
-                seriesAdapter.submitList(list)      // direct — no wrapper
+                serAdapter.submitList(list)
             }
         }
 
-        // Selected series → detail panel
+        // Selected series → detail panel on right
         lifecycleScope.launch {
-            viewModel.selectedSeries.collect { s ->
+            vm.selectedSeries.collect { s ->
                 if (_b == null || s == null) return@collect
                 b.tvSeriesTitle.text  = s.name
                 b.tvSeriesInfo.text   = listOfNotNull(
@@ -146,14 +148,15 @@ class SeriesFragment : Fragment() {
                 ).joinToString(" • ")
                 val r = s.rating5 ?: s.rating?.toDoubleOrNull()
                 b.tvSeriesRating.text = if (r != null && r > 0) "★ ${"%.1f".format(r)}" else ""
-                b.tvSeriesPlot.text   = s.plot?.takeIf { it.isNotBlank() } ?: "No description available."
+                b.tvSeriesPlot.text   =
+                    s.plot?.takeIf { it.isNotBlank() } ?: "No description available."
                 b.ivSeriesCover.loadUrl(s.cover, s.name)
             }
         }
 
         // Seasons
         lifecycleScope.launch {
-            viewModel.seasons.collect { seasons ->
+            vm.seasons.collect { seasons ->
                 if (_b == null) return@collect
                 seasonAdapter.submitList(seasons)
                 b.rvSeasons.visibility = if (seasons.isEmpty()) View.GONE else View.VISIBLE
@@ -162,22 +165,21 @@ class SeriesFragment : Fragment() {
 
         // Episodes
         lifecycleScope.launch {
-            viewModel.episodes.collect { eps ->
+            vm.episodes.collect { eps ->
                 if (_b == null) return@collect
-                episodeAdapter.submitList(eps)
+                epAdapter.submitList(eps)
             }
         }
 
-        // Loading spinner
+        // Loading
         lifecycleScope.launch {
-            viewModel.loading.collect { loading ->
+            vm.loading.collect { loading ->
                 if (_b == null) return@collect
                 b.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
             }
         }
     }
 
-    // ── Search icon ───────────────────────────────────────────
     private fun setupSearch() {
         b.btnSearch.setOnClickListener {
             searchOpen = !searchOpen
@@ -188,13 +190,9 @@ class SeriesFragment : Fragment() {
                     ?.showSoftInput(b.etSearch, InputMethodManager.SHOW_IMPLICIT)
             } else closeSearch()
         }
-
         b.btnClearSearch.setOnClickListener { closeSearch() }
-
-        b.etSearch.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) {
-                viewModel.search(s?.toString() ?: "")
-            }
+        b.etSearch.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) { vm.search(s?.toString() ?: "") }
             override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
             override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
         })
@@ -204,7 +202,7 @@ class SeriesFragment : Fragment() {
         searchOpen = false
         b.etSearch.setText("")
         b.searchBarContainer.visibility = View.GONE
-        viewModel.search("")
+        vm.search("")
         ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
             ?.hideSoftInputFromWindow(b.etSearch.windowToken, 0)
     }
