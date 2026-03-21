@@ -11,20 +11,27 @@ import com.nitro.tvplayer.ui.movies.MoviesFragment
 import com.nitro.tvplayer.ui.search.SearchFragment
 import com.nitro.tvplayer.ui.series.SeriesFragment
 import com.nitro.tvplayer.ui.settings.SettingsFragment
+import com.nitro.tvplayer.utils.PrefsManager
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class HomeActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityHomeBinding
+    @Inject lateinit var prefs: PrefsManager
 
-    private val liveTvFragment   = LiveTvFragment()
-    private val moviesFragment   = MoviesFragment()
-    private val seriesFragment   = SeriesFragment()
-    private val searchFragment   = SearchFragment()
-    private val settingsFragment = SettingsFragment()
+    private val fragmentCache = mutableMapOf<String, Fragment>()
+    private var activeTag = TAB_HOME
 
-    private var activeFragment: Fragment = liveTvFragment
+    companion object {
+        const val TAB_HOME     = "home"
+        const val TAB_LIVE     = "live"
+        const val TAB_MOVIES   = "movies"
+        const val TAB_SERIES   = "series"
+        const val TAB_SEARCH   = "search"
+        const val TAB_SETTINGS = "settings"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -32,49 +39,75 @@ class HomeActivity : AppCompatActivity() {
         binding = ActivityHomeBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        if (savedInstanceState == null) {
-            setupFragments()
+        if (savedInstanceState != null) {
+            activeTag = savedInstanceState.getString("active_tab", TAB_HOME)
+            listOf(TAB_HOME, TAB_LIVE, TAB_MOVIES, TAB_SERIES, TAB_SEARCH, TAB_SETTINGS)
+                .forEach { tag ->
+                    supportFragmentManager.findFragmentByTag(tag)
+                        ?.let { fragmentCache[tag] = it }
+                }
         }
-        setupNavigation()
+
+        // Wire up tab clicks — uses TextView IDs from activity_home.xml
+        binding.tabHome.setOnClickListener     { navigateTo(TAB_HOME) }
+        binding.tabLive.setOnClickListener     { navigateTo(TAB_LIVE) }
+        binding.tabMovies.setOnClickListener   { navigateTo(TAB_MOVIES) }
+        binding.tabSeries.setOnClickListener   { navigateTo(TAB_SERIES) }
+        binding.tabSearch.setOnClickListener   { navigateTo(TAB_SEARCH) }
+        binding.tabSettings.setOnClickListener { navigateTo(TAB_SETTINGS) }
+
+        highlightTab(activeTag)
+        showFragment(activeTag)
     }
 
-    private fun setupFragments() {
-        supportFragmentManager.beginTransaction().apply {
-            add(R.id.fragmentContainer, liveTvFragment,   "live")
-            add(R.id.fragmentContainer, moviesFragment,   "movies")
-            add(R.id.fragmentContainer, seriesFragment,   "series")
-            add(R.id.fragmentContainer, searchFragment,   "search")
-            add(R.id.fragmentContainer, settingsFragment, "settings")
-            hide(moviesFragment)
-            hide(seriesFragment)
-            hide(searchFragment)
-            hide(settingsFragment)
-        }.commit()
-        activeFragment = liveTvFragment
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("active_tab", activeTag)
     }
 
-    private fun setupNavigation() {
-        binding.bottomNav.setOnItemSelectedListener { item ->
-            val target: Fragment = when (item.itemId) {
-                R.id.nav_live     -> liveTvFragment
-                R.id.nav_movies   -> moviesFragment
-                R.id.nav_series   -> seriesFragment
-                R.id.nav_search   -> searchFragment
-                R.id.nav_settings -> settingsFragment
-                else              -> return@setOnItemSelectedListener false
-            }
-            if (target === activeFragment) return@setOnItemSelectedListener true
-            switchTo(target)
-            true
+    fun navigateTo(tag: String) {
+        highlightTab(tag)
+        showFragment(tag)
+    }
+
+    private fun highlightTab(tag: String) {
+        listOf(
+            binding.tabHome, binding.tabLive, binding.tabMovies,
+            binding.tabSeries, binding.tabSearch, binding.tabSettings
+        ).forEach { it.isSelected = false }
+
+        when (tag) {
+            TAB_HOME     -> binding.tabHome.isSelected     = true
+            TAB_LIVE     -> binding.tabLive.isSelected     = true
+            TAB_MOVIES   -> binding.tabMovies.isSelected   = true
+            TAB_SERIES   -> binding.tabSeries.isSelected   = true
+            TAB_SEARCH   -> binding.tabSearch.isSelected   = true
+            TAB_SETTINGS -> binding.tabSettings.isSelected = true
         }
-        binding.bottomNav.selectedItemId = R.id.nav_live
     }
 
-    private fun switchTo(target: Fragment) {
-        supportFragmentManager.beginTransaction()
-            .hide(activeFragment)
-            .show(target)
-            .commit()
-        activeFragment = target
+    private fun showFragment(tag: String) {
+        activeTag = tag
+        val tx     = supportFragmentManager.beginTransaction()
+        val target = fragmentCache.getOrPut(tag) { createFragment(tag) }
+
+        fragmentCache.forEach { (t, f) ->
+            if (t != tag && f.isAdded) tx.hide(f)
+        }
+
+        if (!target.isAdded) tx.add(R.id.fragmentContainer, target, tag)
+        else tx.show(target)
+
+        tx.commitAllowingStateLoss()
+    }
+
+    private fun createFragment(tag: String): Fragment = when (tag) {
+        TAB_HOME     -> HomeFragment().also { it.onNavigate = { navTag -> navigateTo(navTag) } }
+        TAB_LIVE     -> LiveTvFragment()
+        TAB_MOVIES   -> MoviesFragment()
+        TAB_SERIES   -> SeriesFragment()
+        TAB_SEARCH   -> SearchFragment()
+        TAB_SETTINGS -> SettingsFragment()
+        else         -> HomeFragment()
     }
 }
