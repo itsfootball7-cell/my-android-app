@@ -6,9 +6,9 @@
     android:orientation="horizontal"
     android:background="@color/bg_primary">
 
-    <!-- LEFT: Genre Categories -->
+    <!-- ── LEFT: Category sidebar ── -->
     <LinearLayout
-        android:layout_width="140dp"
+        android:layout_width="160dp"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="@color/bg_sidebar">
@@ -17,155 +17,197 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="GENRES"
-            android:textColor="#4DFFFFFF"
+            android:textColor="#40FFFFFF"
             android:textSize="9sp"
-            android:letterSpacing="0.1"
-            android:padding="12dp"
-            android:paddingBottom="4dp"/>
+            android:textStyle="bold"
+            android:letterSpacing="0.15"
+            android:paddingStart="12dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="6dp"/>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvCategories"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="6dp"/>
+            android:clipToPadding="false"/>
+
     </LinearLayout>
 
-    <View android:layout_width="1dp" android:layout_height="match_parent" android:background="#14FFFFFF"/>
-
-    <!-- MIDDLE: Movie Grid -->
+    <!-- ── MIDDLE: Movie grid ── -->
     <LinearLayout
-        android:layout_width="240dp"
+        android:layout_width="340dp"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="@color/bg_middle">
 
-        <EditText
-            android:id="@+id/etSearch"
+        <!-- Header + search icon -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="36dp"
-            android:layout_margin="8dp"
-            android:hint="Search movies..."
-            android:textColorHint="#40FFFFFF"
-            android:textColor="@color/white"
-            android:textSize="11sp"
-            android:background="@drawable/input_bg"
-            android:paddingStart="10dp"
-            android:paddingEnd="10dp"/>
+            android:layout_height="44dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="8dp"
+            android:background="@color/bg_header">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="MOVIES"
+                android:textColor="#60FFFFFF"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1"/>
+
+            <TextView
+                android:id="@+id/btnSearch"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:text="🔍"
+                android:textSize="16sp"
+                android:gravity="center"
+                android:background="@drawable/btn_player_control"
+                android:clickable="true"
+                android:focusable="true"/>
+
+        </LinearLayout>
+
+        <!-- Search bar (hidden by default, shown on icon tap) -->
+        <LinearLayout
+            android:id="@+id/searchBarContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="4dp"
+            android:background="@color/bg_header"
+            android:visibility="gone">
+
+            <EditText
+                android:id="@+id/etSearch"
+                android:layout_width="0dp"
+                android:layout_height="36dp"
+                android:layout_weight="1"
+                android:hint="Search movies..."
+                android:textColor="#FFFFFF"
+                android:textColorHint="#60FFFFFF"
+                android:textSize="12sp"
+                android:background="@drawable/input_bg"
+                android:paddingStart="12dp"
+                android:paddingEnd="8dp"
+                android:inputType="text"
+                android:singleLine="true"
+                android:imeOptions="actionSearch"
+                android:layout_marginEnd="6dp"/>
+
+            <TextView
+                android:id="@+id/btnClearSearch"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:text="✕"
+                android:textSize="12sp"
+                android:textColor="#80FFFFFF"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true"/>
+
+        </LinearLayout>
 
         <ProgressBar
             android:id="@+id/progressBar"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:visibility="gone"
-            android:indeterminateTint="@color/accent_orange"/>
+            android:layout_width="match_parent"
+            android:layout_height="2dp"
+            android:indeterminateTint="@color/accent_orange"
+            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
+            android:indeterminate="true"
+            android:visibility="gone"/>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvMovies"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="6dp"/>
+            android:clipToPadding="false"
+            android:padding="4dp"/>
+
     </LinearLayout>
 
-    <View android:layout_width="1dp" android:layout_height="match_parent" android:background="#14FFFFFF"/>
-
-    <!-- RIGHT: Movie Detail -->
+    <!-- ── RIGHT: Movie detail panel ── -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:padding="14dp">
+        android:padding="16dp"
+        android:background="@color/bg_primary">
+
+        <ImageView
+            android:id="@+id/ivMoviePoster"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:scaleType="fitCenter"
+            android:layout_marginBottom="10dp"/>
+
+        <TextView
+            android:id="@+id/tvMovieTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:layout_marginBottom="4dp"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginBottom="12dp">
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
 
-            <ImageView
-                android:id="@+id/ivMoviePoster"
-                android:layout_width="70dp"
-                android:layout_height="100dp"
-                android:scaleType="centerCrop"
-                android:background="@drawable/poster_placeholder"
-                android:layout_marginEnd="14dp"/>
-
-            <LinearLayout
+            <TextView
+                android:id="@+id/tvMovieYear"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical">
+                android:textColor="#80FFFFFF"
+                android:textSize="11sp"/>
 
-                <TextView
-                    android:id="@+id/tvMovieTitle"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    android:textStyle="bold"
-                    android:layout_marginBottom="6dp"/>
+            <TextView
+                android:id="@+id/tvMovieRating"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFB300"
+                android:textSize="11sp"/>
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="6dp">
-
-                    <TextView
-                        android:id="@+id/tvMovieYear"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="#80FFFFFF"
-                        android:textSize="11sp"
-                        android:background="@drawable/badge_info"
-                        android:paddingStart="8dp"
-                        android:paddingEnd="8dp"
-                        android:paddingTop="2dp"
-                        android:paddingBottom="2dp"
-                        android:layout_marginEnd="6dp"/>
-
-                    <TextView
-                        android:id="@+id/tvMovieRating"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/accent_orange"
-                        android:textSize="12sp"/>
-
-                </LinearLayout>
-
-                <Button
-                    android:id="@+id/btnPlay"
-                    android:layout_width="140dp"
-                    android:layout_height="38dp"
-                    android:text="▶  Play Now"
-                    android:textColor="@color/white"
-                    android:textSize="12sp"
-                    android:background="@drawable/btn_primary"
-                    android:layout_marginTop="8dp"/>
-
-            </LinearLayout>
         </LinearLayout>
-
-        <View android:layout_width="match_parent" android:layout_height="0.5dp"
-            android:background="#14FFFFFF" android:layout_marginBottom="10dp"/>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="SYNOPSIS"
-            android:textColor="#4DFFFFFF"
-            android:textSize="9sp"
-            android:letterSpacing="0.1"
-            android:layout_marginBottom="6dp"/>
 
         <TextView
             android:id="@+id/tvMoviePlot"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#99FFFFFF"
-            android:textSize="12sp"
-            android:lineSpacingMultiplier="1.5"/>
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:textColor="#AAFFFFFF"
+            android:textSize="11sp"
+            android:lineSpacingMultiplier="1.4"
+            android:layout_marginBottom="12dp"/>
+
+        <TextView
+            android:id="@+id/btnPlay"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:text="▶  PLAY NOW"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:background="@drawable/btn_primary"/>
 
     </LinearLayout>
+
 </LinearLayout>
