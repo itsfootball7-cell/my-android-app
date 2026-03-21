@@ -32,7 +32,6 @@ class MoviesViewModel @Inject constructor(
     val loading          = MutableStateFlow(false)
     val error            = MutableStateFlow<String?>(null)
 
-    // Dashboard stats
     val allMoviesCount = MutableStateFlow(0)
     val lastUpdated    = MutableStateFlow(0L)
 
@@ -56,73 +55,120 @@ class MoviesViewModel @Inject constructor(
     private fun fetchData() {
         if (fetchInProgress) return
         fetchInProgress = true
+
         viewModelScope.launch {
             loading.value = true; error.value = null
             try {
                 val catsD   = async { repo.getVodCategories() }
                 val moviesD = async { repo.getVodStreams() }
 
-                catsD.await().onSuccess { list ->
+                val catResult   = catsD.await()
+                val movieResult = moviesD.await()
+
+                var firstRealCat: Category? = null
+
+                catResult.onSuccess { list ->
+                    firstRealCat = list.firstOrNull()
                     categories.value = listOf(
                         Category(MOVIE_CAT_ALL,            "All",               0),
                         Category(MOVIE_CAT_FAVOURITES,     "Favourites",        0),
                         Category(MOVIE_CAT_CONTINUE,       "Continue Watching", 0),
                         Category(MOVIE_CAT_RECENTLY_ADDED, "Recently Added",    0)
                     ) + list
-                    selectedCategory.value = list.firstOrNull()
                 }
 
-                moviesD.await().onSuccess { list ->
+                movieResult.onSuccess { list ->
                     allMovies.value      = list
                     allMoviesCount.value = list.size
                     lastUpdated.value    = System.currentTimeMillis()
-                    val catId = selectedCategory.value?.categoryId
-                    val shown = if (catId != null) list.filter { it.categoryId == catId } else list
-                    movies.value = if (shown.isEmpty()) list else shown
+
+                    // Start by showing ALL movies — never blank
+                    movies.value = list
+
+                    // Then narrow to first real category if it has content
+                    if (firstRealCat != null) {
+                        val filtered = list.filter { it.categoryId == firstRealCat!!.categoryId }
+                        if (filtered.isNotEmpty()) {
+                            selectedCategory.value = firstRealCat
+                            movies.value           = filtered
+                        }
+                    }
+
                     if (movies.value.isNotEmpty()) selectedMovie.value = movies.value.first()
                     dataLoaded = true
+
                 }.onFailure { e -> error.value = e.message }
 
             } catch (e: Exception) {
                 error.value = e.message
-            } finally { loading.value = false; fetchInProgress = false }
+            } finally {
+                loading.value   = false
+                fetchInProgress = false
+            }
         }
     }
 
+    /**
+     * Called when user taps a category in the sidebar.
+     * Always updates movies.value so the grid changes.
+     */
     fun filterByCategory(category: Category) {
-        selectedCategory.value = category
         if (allMovies.value.isEmpty()) { loadAll(); return }
-        val filtered = when (category.categoryId) {
+
+        selectedCategory.value = category
+
+        val filtered: List<VodStream> = when (category.categoryId) {
+
             MOVIE_CAT_ALL -> allMovies.value
+
             MOVIE_CAT_FAVOURITES -> {
                 val ids = favouritesManager.getByType("movie")
                     .mapNotNull { it.id.removePrefix("movie_").toIntOrNull() }
                 allMovies.value.filter { it.streamId in ids }
             }
+
             MOVIE_CAT_CONTINUE -> {
                 val watched  = positionManager.getWatchedByType("movie")
                 val movieMap = allMovies.value.associateBy { "movie_${it.streamId}" }
                 watched.mapNotNull { movieMap[it.contentId] }
             }
+
             MOVIE_CAT_RECENTLY_ADDED ->
-                allMovies.value.sortedByDescending { it.added?.toLongOrNull() ?: 0L }.take(30)
-            else -> allMovies.value.filter { it.categoryId == category.categoryId }
+                allMovies.value
+                    .sortedByDescending { it.added?.toLongOrNull() ?: 0L }
+                    .take(30)
+
+            else ->
+                // Filter by real category ID — match what the API returns
+                allMovies.value.filter { movie -> movie.categoryId == category.categoryId }
         }
-        movies.value = if (filtered.isEmpty()) allMovies.value else filtered
+
+        // Set movies — if category has no content show "All" instead of blank
+        movies.value = filtered.ifEmpty { allMovies.value }
+
         if (movies.value.isNotEmpty()) selectedMovie.value = movies.value.first()
     }
 
     fun refreshContinueWatching() {
-        selectedCategory.value?.let { if (it.categoryId == MOVIE_CAT_CONTINUE) filterByCategory(it) }
+        selectedCategory.value?.let {
+            if (it.categoryId == MOVIE_CAT_CONTINUE) filterByCategory(it)
+        }
     }
 
     fun selectMovie(movie: VodStream) { selectedMovie.value = movie }
 
-    fun search(q: String) {
-        if (q.isEmpty()) { filterByCategory(selectedCategory.value ?: return); return }
-        movies.value = allMovies.value.filter { it.name.contains(q, ignoreCase = true) }
+    fun search(query: String) {
+        if (query.isEmpty()) {
+            // Restore current category filter
+            filterByCategory(
+                selectedCategory.value ?: Category(MOVIE_CAT_ALL, "All", 0)
+            )
+            return
+        }
+        // Search within ALL movies (not just current category)
+        movies.value = allMovies.value.filter { it.name.contains(query, ignoreCase = true) }
     }
 
     fun buildStreamUrl(streamId: Int, ext: String) = repo.buildVodUrl(streamId, ext)
-    fun getAllMovies() = allMovies.value
+    fun getAllMovies(): List<VodStream> = allMovies.value
 }
