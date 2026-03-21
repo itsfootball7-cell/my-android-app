@@ -4,6 +4,7 @@ import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.nitro.tvplayer.R
@@ -62,14 +63,17 @@ class HomeActivity : AppCompatActivity() {
                 }
         }
 
-        binding.tabHome.setOnClickListener     { navigateTo(TAB_HOME) }
-        binding.tabLive.setOnClickListener     { navigateTo(TAB_LIVE) }
-        binding.tabMovies.setOnClickListener   { navigateTo(TAB_MOVIES) }
-        binding.tabSeries.setOnClickListener   { navigateTo(TAB_SERIES) }
-        binding.tabSearch.setOnClickListener   { navigateTo(TAB_SEARCH) }
+        // Home always navigates back to home
+        binding.tabHome.setOnClickListener { navigateTo(TAB_HOME) }
+        // Settings always accessible
         binding.tabSettings.setOnClickListener { navigateTo(TAB_SETTINGS) }
+        // Section tabs (only visible when inside that section — act as section label)
+        binding.tabLive.setOnClickListener   { /* already here, do nothing */ }
+        binding.tabMovies.setOnClickListener { /* already here, do nothing */ }
+        binding.tabSeries.setOnClickListener { /* already here, do nothing */ }
+        binding.tabSearch.setOnClickListener { /* already here, do nothing */ }
 
-        highlightTab(activeTag)
+        updateNavForTab(activeTag)
         showFragment(activeTag)
         clockHandler.post(clockRunnable)
     }
@@ -85,22 +89,53 @@ class HomeActivity : AppCompatActivity() {
     }
 
     fun navigateTo(tag: String) {
-        highlightTab(tag)
+        updateNavForTab(tag)
         showFragment(tag)
     }
 
-    private fun highlightTab(tag: String) {
-        listOf(
-            binding.tabHome, binding.tabLive, binding.tabMovies,
-            binding.tabSeries, binding.tabSearch, binding.tabSettings
-        ).forEach { it.isSelected = false }
+    /**
+     * Show only the relevant tab in the nav bar for each section.
+     * Home + Settings are always visible.
+     * Section tabs appear only when you're inside that section.
+     */
+    private fun updateNavForTab(tag: String) {
+        // Reset all section tabs to gone
+        binding.tabLive.visibility   = View.GONE
+        binding.tabMovies.visibility = View.GONE
+        binding.tabSeries.visibility = View.GONE
+        binding.tabSearch.visibility = View.GONE
+
+        // Reset selected states
+        binding.tabHome.isSelected     = false
+        binding.tabSettings.isSelected = false
+        binding.tabLive.isSelected     = false
+        binding.tabMovies.isSelected   = false
+        binding.tabSeries.isSelected   = false
+        binding.tabSearch.isSelected   = false
+
         when (tag) {
-            TAB_HOME     -> binding.tabHome.isSelected     = true
-            TAB_LIVE     -> binding.tabLive.isSelected     = true
-            TAB_MOVIES   -> binding.tabMovies.isSelected   = true
-            TAB_SERIES   -> binding.tabSeries.isSelected   = true
-            TAB_SEARCH   -> binding.tabSearch.isSelected   = true
-            TAB_SETTINGS -> binding.tabSettings.isSelected = true
+            TAB_HOME -> {
+                binding.tabHome.isSelected = true
+            }
+            TAB_LIVE -> {
+                binding.tabLive.visibility = View.VISIBLE
+                binding.tabLive.isSelected = true
+            }
+            TAB_MOVIES -> {
+                binding.tabMovies.visibility = View.VISIBLE
+                binding.tabMovies.isSelected = true
+            }
+            TAB_SERIES -> {
+                binding.tabSeries.visibility = View.VISIBLE
+                binding.tabSeries.isSelected = true
+            }
+            TAB_SEARCH -> {
+                binding.tabSearch.visibility = View.VISIBLE
+                binding.tabSearch.isSelected = true
+            }
+            TAB_SETTINGS -> {
+                binding.tabSettings.isSelected = true
+            }
         }
     }
 
@@ -108,9 +143,14 @@ class HomeActivity : AppCompatActivity() {
         activeTag = tag
         val tx     = supportFragmentManager.beginTransaction()
         val target = fragmentCache.getOrPut(tag) { createFragment(tag) }
-        fragmentCache.forEach { (t, f) -> if (t != tag && f.isAdded) tx.hide(f) }
+
+        fragmentCache.forEach { (t, f) ->
+            if (t != tag && f.isAdded) tx.hide(f)
+        }
+
         if (!target.isAdded) tx.add(R.id.fragmentContainer, target, tag)
         else tx.show(target)
+
         tx.commitAllowingStateLoss()
     }
 
