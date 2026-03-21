@@ -15,31 +15,34 @@ import com.bumptech.glide.load.engine.GlideException
 import com.bumptech.glide.request.RequestListener
 import com.bumptech.glide.request.target.Target
 
+@Suppress("OVERRIDE_DEPRECATION", "RedundantNullableReturnType")
 fun ImageView.loadUrl(url: String?, fallbackText: String = "") {
     if (url.isNullOrBlank()) {
         if (fallbackText.isNotBlank()) setLetterPlaceholder(fallbackText)
         return
     }
-    val view = this
+    val imgView = this
     Glide.with(context)
         .load(url)
         .diskCacheStrategy(DiskCacheStrategy.ALL)
         .listener(object : RequestListener<Drawable> {
+            @Suppress("OVERRIDE_DEPRECATION")
             override fun onLoadFailed(
                 e: GlideException?,
-                model: Any,
-                target: Target<Drawable>,
+                model: Any?,
+                target: Target<Drawable>?,
                 isFirstResource: Boolean
             ): Boolean {
-                if (fallbackText.isNotBlank()) view.setLetterPlaceholder(fallbackText)
+                if (fallbackText.isNotBlank()) imgView.setLetterPlaceholder(fallbackText)
                 return true
             }
 
+            @Suppress("OVERRIDE_DEPRECATION")
             override fun onResourceReady(
-                resource: Drawable,
-                model: Any,
-                target: Target<Drawable>,
-                dataSource: DataSource,
+                resource: Drawable?,
+                model: Any?,
+                target: Target<Drawable>?,
+                dataSource: DataSource?,
                 isFirstResource: Boolean
             ): Boolean = false
         })
