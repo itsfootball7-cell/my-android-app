@@ -9,47 +9,52 @@ import android.graphics.drawable.Drawable
 import android.view.View
 import android.widget.ImageView
 import com.bumptech.glide.Glide
-import com.bumptech.glide.load.DataSource
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.bumptech.glide.load.engine.GlideException
-import com.bumptech.glide.request.RequestListener
-import com.bumptech.glide.request.target.Target
+import com.bumptech.glide.load.resource.drawable.DrawableTransitionOptions
+import com.bumptech.glide.request.RequestOptions
 
-@Suppress("OVERRIDE_DEPRECATION", "RedundantNullableReturnType")
+/**
+ * Load an image URL into this ImageView.
+ * If the URL is blank or fails to load, shows a letter avatar using [fallbackText].
+ * Does NOT use RequestListener to avoid Glide version signature conflicts.
+ */
 fun ImageView.loadUrl(url: String?, fallbackText: String = "") {
     if (url.isNullOrBlank()) {
         if (fallbackText.isNotBlank()) setLetterPlaceholder(fallbackText)
+        else setImageDrawable(null)
         return
     }
-    val imgView = this
+
+    val placeholder: Drawable? = if (fallbackText.isNotBlank()) makeLetterDrawable(fallbackText) else null
+
     Glide.with(context)
         .load(url)
-        .diskCacheStrategy(DiskCacheStrategy.ALL)
-        .listener(object : RequestListener<Drawable> {
-            @Suppress("OVERRIDE_DEPRECATION")
-            override fun onLoadFailed(
-                e: GlideException?,
-                model: Any?,
-                target: Target<Drawable>?,
-                isFirstResource: Boolean
-            ): Boolean {
-                if (fallbackText.isNotBlank()) imgView.setLetterPlaceholder(fallbackText)
-                return true
-            }
-
-            @Suppress("OVERRIDE_DEPRECATION")
-            override fun onResourceReady(
-                resource: Drawable?,
-                model: Any?,
-                target: Target<Drawable>?,
-                dataSource: DataSource?,
-                isFirstResource: Boolean
-            ): Boolean = false
-        })
+        .apply(
+            RequestOptions()
+                .diskCacheStrategy(DiskCacheStrategy.ALL)
+                .placeholder(placeholder)
+                .error(placeholder)
+        )
         .into(this)
 }
 
+/** Convenience overload — same as loadUrl but name is explicit */
+fun ImageView.loadIcon(url: String?, fallbackText: String = "") = loadUrl(url, fallbackText)
+
 private fun ImageView.setLetterPlaceholder(name: String) {
+    setImageBitmap(makeLetterBitmap(name))
+}
+
+private fun makeLetterDrawable(name: String): android.graphics.drawable.BitmapDrawable? {
+    return try {
+        android.graphics.drawable.BitmapDrawable(
+            android.content.res.Resources.getSystem(),
+            makeLetterBitmap(name)
+        )
+    } catch (e: Exception) { null }
+}
+
+private fun makeLetterBitmap(name: String): Bitmap {
     val letter = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
     val size   = 128
     val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
@@ -70,7 +75,7 @@ private fun ImageView.setLetterPlaceholder(name: String) {
     }
     val textY = size / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
     canvas.drawText(letter, size / 2f, textY, textPaint)
-    setImageBitmap(bitmap)
+    return bitmap
 }
 
 fun View.visible()   { visibility = View.VISIBLE }
