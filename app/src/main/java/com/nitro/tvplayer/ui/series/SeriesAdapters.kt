@@ -1,70 +1,68 @@
 package com.nitro.tvplayer.ui.series
 
-import android.graphics.Color
-import android.graphics.Typeface
-import android.util.TypedValue
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
-import android.widget.TextView
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.nitro.tvplayer.R
 import com.nitro.tvplayer.data.model.Episode
 import com.nitro.tvplayer.data.model.SeriesItem
+import com.nitro.tvplayer.databinding.ItemMovieBinding
 import com.nitro.tvplayer.databinding.ItemSeasonBinding
 import com.nitro.tvplayer.databinding.ItemEpisodeBinding
+import com.nitro.tvplayer.utils.loadUrl
 
+// ── Series Grid Adapter ───────────────────────────────────────
+// Uses ItemMovieBinding with the ORIGINAL IDs:
+// ivMoviePoster, tvMovieName, tvMovieRating, progressWatched
 class SeriesAdapter(
     private val onClick:     (SeriesItem) -> Unit,
     private val onLongPress: ((SeriesItem) -> Unit)? = null
 ) : ListAdapter<SeriesItem, SeriesAdapter.VH>(DIFF) {
 
-    inner class VH(val card: FrameLayout, val label: TextView) : RecyclerView.ViewHolder(card)
+    private var selectedPos = 0
 
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
-        val ctx = parent.context
-        val dp  = ctx.resources.displayMetrics.density
+    inner class VH(val b: ItemMovieBinding) : RecyclerView.ViewHolder(b.root)
 
-        // Label TextView — created in code, no XML
-        val label = TextView(ctx).apply {
-            setTextColor(Color.WHITE)
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-            typeface  = Typeface.DEFAULT_BOLD
-            maxLines  = 3
-            setPadding(
-                (6 * dp).toInt(), (4 * dp).toInt(),
-                (6 * dp).toInt(), (6 * dp).toInt()
-            )
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = android.view.Gravity.BOTTOM
-            }
-        }
-
-        // Card container — dark background
-        val card = FrameLayout(ctx).apply {
-            setBackgroundColor(Color.parseColor("#1A2050"))
-            addView(label)
-        }
-        card.layoutParams = RecyclerView.LayoutParams(
-            RecyclerView.LayoutParams.MATCH_PARENT,
-            (120 * dp).toInt()
-        ).apply { setMargins(3, 3, 3, 3) }
-
-        return VH(card, label)
-    }
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+        VH(ItemMovieBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
+        with(holder.b) {
+            tvMovieName.text = item.name
+            ivMoviePoster.loadUrl(item.cover, item.name)
 
-        // Name — always show something even if blank
-        holder.label.text = item.name.ifBlank { "Series ${position + 1}" }
+            // Rating badge
+            val rating = item.rating5?.let { "%.0f".format(it) }
+                ?: item.rating?.toDoubleOrNull()?.let { "%.0f".format(it) }
+            if (!rating.isNullOrBlank() && rating != "0") {
+                tvMovieRating.text       = rating
+                tvMovieRating.visibility = View.VISIBLE
+                val rv = rating.toIntOrNull() ?: 0
+                tvMovieRating.setBackgroundResource(when {
+                    rv >= 7 -> R.drawable.badge_green
+                    rv >= 5 -> R.drawable.badge_orange
+                    else    -> R.drawable.badge_red
+                })
+            } else {
+                tvMovieRating.visibility = View.GONE
+            }
 
-        holder.card.setOnClickListener { onClick(item) }
-        holder.card.setOnLongClickListener { onLongPress?.invoke(item); true }
+            progressWatched.visibility = View.GONE
+            root.isSelected = position == selectedPos
+
+            root.setOnClickListener {
+                val prev = selectedPos
+                selectedPos = holder.bindingAdapterPosition
+                notifyItemChanged(prev)
+                notifyItemChanged(selectedPos)
+                onClick(item)
+            }
+            root.setOnLongClickListener { onLongPress?.invoke(item); true }
+        }
     }
 
     companion object {
