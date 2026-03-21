@@ -34,33 +34,27 @@ class SeriesViewModel @Inject constructor(
     val episodes         = MutableStateFlow<List<Episode>>(emptyList())
     val selectedSeason   = MutableStateFlow("1")
     val loading          = MutableStateFlow(false)
-    val episodeLoading   = MutableStateFlow(false)
     val error            = MutableStateFlow<String?>(null)
 
-    // Dashboard stats
     val allSeriesCount = MutableStateFlow(0)
     val lastUpdated    = MutableStateFlow(0L)
 
-    private val allSeries    = MutableStateFlow<List<SeriesItem>>(emptyList())
-    private val episodeCache = mutableMapOf<Int, Map<String, List<Episode>>>()
-    private var dataLoaded   = false
-    private var fetchInProgress = false  // ← prevents duplicate fetches
+    private val allSeries       = MutableStateFlow<List<SeriesItem>>(emptyList())
+    private val episodeCache    = mutableMapOf<Int, Map<String, List<Episode>>>()
+    private var dataLoaded      = false
+    private var fetchInProgress = false
 
     init { loadAll() }
 
     fun loadAll() {
-        // Only skip if data is already loaded AND fresh
         if (dataLoaded && allSeries.value.isNotEmpty()) return
         if (fetchInProgress) return
         fetchData()
     }
 
     fun forceRefresh() {
-        dataLoaded = false
-        fetchInProgress = false
-        episodeCache.clear()
-        repo.clearSeriesCache()
-        fetchData()
+        dataLoaded = false; fetchInProgress = false
+        episodeCache.clear(); repo.clearSeriesCache(); fetchData()
     }
 
     private fun fetchData() {
@@ -71,123 +65,110 @@ class SeriesViewModel @Inject constructor(
             loading.value = true
             error.value   = null
             try {
-                // Fetch categories and series list in parallel
                 val catsDeferred   = async { repo.getSeriesCategories() }
                 val seriesDeferred = async { repo.getSeries() }
 
+                // Wait for BOTH before processing
                 val catResult    = catsDeferred.await()
                 val seriesResult = seriesDeferred.await()
 
-                // ── Build category list ──
-                catResult.onSuccess { catList ->
-                    val special = listOf(
+                // 1. Build category list first
+                var realCats = emptyList<Category>()
+                catResult.onSuccess { list ->
+                    realCats = list
+                    categories.value = listOf(
                         Category(SERIES_CAT_ALL,            "All",               0),
                         Category(SERIES_CAT_FAVOURITES,     "Favourites",        0),
                         Category(SERIES_CAT_CONTINUE,       "Continue Watching", 0),
                         Category(SERIES_CAT_RECENTLY_ADDED, "Recently Added",    0)
-                    )
-                    categories.value = special + catList
-                }.onFailure { e ->
-                    // Even if categories fail, try to show all series
+                    ) + list
+                }.onFailure {
                     categories.value = listOf(Category(SERIES_CAT_ALL, "All", 0))
                 }
 
-                // ── Process series list ──
+                // 2. Process series — show ALL initially, then let fragment pick category
                 seriesResult.onSuccess { list ->
-                    android.util.Log.d("SeriesVM", "Loaded ${list.size} series")
-
                     allSeries.value      = list
                     allSeriesCount.value = list.size
                     lastUpdated.value    = System.currentTimeMillis()
+                    dataLoaded           = true
 
-                    // Find first real category
-                    val firstRealCat = categories.value.firstOrNull { c ->
-                        c.categoryId != SERIES_CAT_ALL &&
-                        c.categoryId != SERIES_CAT_FAVOURITES &&
-                        c.categoryId != SERIES_CAT_CONTINUE &&
-                        c.categoryId != SERIES_CAT_RECENTLY_ADDED
+                    // Show ALL series immediately so UI is not blank
+                    seriesList.value = list
+
+                    // Then filter to first real category if available
+                    val firstCat = realCats.firstOrNull()
+                    if (firstCat != null) {
+                        val filtered = list.filter { it.categoryId == firstCat.categoryId }
+                        if (filtered.isNotEmpty()) {
+                            selectedCategory.value = firstCat
+                            seriesList.value       = filtered
+                        }
+                        // If filtered is empty, keep showing all — never show blank
                     }
 
-                    // Show all series initially (don't filter to empty)
-                    val initialList = if (firstRealCat != null) {
-                        val filtered = list.filter { it.categoryId == firstRealCat.categoryId }
-                        // If category filter yields nothing, show all
-                        if (filtered.isEmpty()) list else filtered
-                    } else list
-
-                    selectedCategory.value = firstRealCat
-                    seriesList.value       = initialList
-                    dataLoaded             = true
-
-                    android.util.Log.d("SeriesVM", "Showing ${initialList.size} series in UI")
-
-                    // Preload episodes for first series in background
-                    if (initialList.isNotEmpty()) {
-                        selectedSeries.value = initialList.first()
-                        loadEpisodesBackground(initialList.first())
+                    // Select first series and load its episodes
+                    val displayList = seriesList.value
+                    if (displayList.isNotEmpty()) {
+                        selectedSeries.value = displayList.first()
+                        loadEpisodesBackground(displayList.first())
                     }
+
                 }.onFailure { e ->
-                    android.util.Log.e("SeriesVM", "Failed to load series: ${e.message}")
                     error.value = "Failed to load series: ${e.message}"
                 }
 
             } catch (e: Exception) {
-                android.util.Log.e("SeriesVM", "Exception: ${e.message}")
-                error.value = e.message
+                error.value = "Error: ${e.message}"
             } finally {
-                loading.value       = false
-                fetchInProgress     = false
+                loading.value   = false
+                fetchInProgress = false
             }
         }
     }
 
     fun filterByCategory(category: Category) {
-        selectedCategory.value = category
-        val list = allSeries.value
+        // If data not loaded, trigger load then bail — flow will update UI when ready
+        if (allSeries.value.isEmpty()) { loadAll(); return }
 
-        // If data not loaded yet, wait — don't filter empty list
-        if (list.isEmpty()) {
-            loadAll()
-            return
-        }
+        selectedCategory.value = category
 
         val filtered: List<SeriesItem> = when (category.categoryId) {
-            SERIES_CAT_ALL -> list
+            SERIES_CAT_ALL -> allSeries.value
 
             SERIES_CAT_FAVOURITES -> {
-                val favIds = favouritesManager.getByType("series")
+                val ids = favouritesManager.getByType("series")
                     .mapNotNull { it.id.removePrefix("series_").toIntOrNull() }
-                list.filter { it.seriesId in favIds }
+                allSeries.value.filter { it.seriesId in ids }
             }
 
             SERIES_CAT_CONTINUE -> {
                 val watched   = positionManager.getWatchedByType("series")
-                val seriesMap = list.associateBy { it.seriesId }
+                val seriesMap = allSeries.value.associateBy { it.seriesId }
                 watched.mapNotNull { entry ->
                     val id = entry.contentId.removePrefix("series_")
                         .substringBefore("_ep_").toIntOrNull()
-                    if (id != null) seriesMap[id] else null
+                    seriesMap[id]
                 }.distinctBy { it.seriesId }
             }
 
             SERIES_CAT_RECENTLY_ADDED ->
-                list.sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }.take(30)
+                allSeries.value.sortedByDescending {
+                    it.lastModified?.toLongOrNull() ?: 0L
+                }.take(30)
 
-            else -> {
-                val filtered = list.filter { it.categoryId == category.categoryId }
-                // Safety: if category has no content, show all
-                if (filtered.isEmpty()) list else filtered
-            }
+            else -> allSeries.value.filter { it.categoryId == category.categoryId }
         }
 
-        seriesList.value = filtered
+        // NEVER show blank — if category has no content, show all
+        seriesList.value = if (filtered.isNotEmpty()) filtered else allSeries.value
 
-        if (filtered.isNotEmpty()) {
-            selectedSeries.value = filtered.first()
-            loadEpisodesBackground(filtered.first())
+        val displayList = seriesList.value
+        if (displayList.isNotEmpty()) {
+            selectedSeries.value = displayList.first()
+            loadEpisodesBackground(displayList.first())
         } else {
-            seasons.value  = emptyList()
-            episodes.value = emptyList()
+            seasons.value = emptyList(); episodes.value = emptyList()
         }
     }
 
@@ -199,11 +180,8 @@ class SeriesViewModel @Inject constructor(
 
     private fun loadEpisodes(series: SeriesItem) {
         viewModelScope.launch {
-            episodeLoading.value = true
             val cached = episodeCache[series.seriesId]
-            if (cached != null) {
-                updateFromMap(cached); episodeLoading.value = false; return@launch
-            }
+            if (cached != null) { updateFromMap(cached); return@launch }
             try {
                 repo.getSeriesInfo(series.seriesId.toString())
                     .onSuccess { info ->
@@ -211,15 +189,9 @@ class SeriesViewModel @Inject constructor(
                         episodeCache[series.seriesId] = eps
                         updateFromMap(eps)
                     }
-                    .onFailure {
-                        seasons.value  = emptyList()
-                        episodes.value = emptyList()
-                    }
+                    .onFailure { seasons.value = emptyList(); episodes.value = emptyList() }
             } catch (e: Exception) {
-                seasons.value  = emptyList()
-                episodes.value = emptyList()
-            } finally {
-                episodeLoading.value = false
+                seasons.value = emptyList(); episodes.value = emptyList()
             }
         }
     }
@@ -234,7 +206,7 @@ class SeriesViewModel @Inject constructor(
                     episodeCache[series.seriesId] = eps
                     if (selectedSeries.value?.seriesId == series.seriesId) updateFromMap(eps)
                 }
-            } catch (e: Exception) { /* silent bg load */ }
+            } catch (e: Exception) { /* silent */ }
         }
     }
 
@@ -252,7 +224,10 @@ class SeriesViewModel @Inject constructor(
 
     fun search(query: String) {
         if (query.isEmpty()) {
-            filterByCategory(selectedCategory.value ?: Category(SERIES_CAT_ALL, "All", 0))
+            seriesList.value = if (selectedCategory.value?.categoryId == SERIES_CAT_ALL || selectedCategory.value == null)
+                allSeries.value
+            else
+                allSeries.value.filter { it.categoryId == selectedCategory.value?.categoryId }
             return
         }
         seriesList.value = allSeries.value.filter { it.name.contains(query, ignoreCase = true) }
