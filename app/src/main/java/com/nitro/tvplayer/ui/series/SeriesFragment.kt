@@ -7,7 +7,10 @@ import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -38,6 +41,7 @@ class SeriesFragment : Fragment() {
     private lateinit var seriesAdapter: SeriesAdapter
     private lateinit var episodeAdapter: EpisodeAdapter
     private lateinit var seasonAdapter: SeasonAdapter
+    private var searchVisible = false
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentSeriesBinding.inflate(inflater, container, false); return binding.root
@@ -48,9 +52,61 @@ class SeriesFragment : Fragment() {
         setupAdapters(); observeViewModel(); setupSearch()
     }
 
+    override fun onHiddenChanged(hidden: Boolean) {
+        super.onHiddenChanged(hidden)
+        if (hidden) collapseSearch()
+    }
+
+    // ── Search icon toggle ────────────────────────────────────
+    private fun setupSearch() {
+        binding.btnSearch.setOnClickListener {
+            searchVisible = !searchVisible
+            if (searchVisible) {
+                binding.searchBarContainer.visibility = View.VISIBLE
+                binding.etSearch.requestFocus()
+                showKeyboard(binding.etSearch)
+            } else {
+                collapseSearch()
+            }
+        }
+
+        binding.btnClearSearch.setOnClickListener { collapseSearch() }
+
+        binding.etSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                viewModel.search(binding.etSearch.text.toString()); hideKeyboard(); true
+            } else false
+        }
+
+        binding.etSearch.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) { viewModel.search(s.toString()) }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
+    }
+
+    private fun collapseSearch() {
+        searchVisible = false
+        binding.etSearch.setText("")
+        binding.searchBarContainer.visibility = View.GONE
+        viewModel.search(""); hideKeyboard()
+    }
+
+    private fun showKeyboard(v: View) {
+        ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
+            ?.showSoftInput(v, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun hideKeyboard() {
+        ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
+            ?.hideSoftInputFromWindow(binding.etSearch.windowToken, 0)
+    }
+
     private fun setupAdapters() {
         categoryAdapter = CategoryAdapter { category -> viewModel.filterByCategory(category) }
-        binding.rvCategories.apply { layoutManager = LinearLayoutManager(requireContext()); adapter = categoryAdapter }
+        binding.rvCategories.apply {
+            layoutManager = LinearLayoutManager(requireContext()); adapter = categoryAdapter
+        }
 
         seriesAdapter = SeriesAdapter(
             onClick = { series -> viewModel.selectSeries(series) },
@@ -59,10 +115,13 @@ class SeriesFragment : Fragment() {
                     id = "series_${series.seriesId}", name = series.name, icon = series.cover,
                     type = "series", streamUrl = "", categoryId = series.categoryId))
                 Toast.makeText(requireContext(),
-                    if (added) "⭐ Added to Favourites" else "Removed from Favourites", Toast.LENGTH_SHORT).show()
+                    if (added) "⭐ Added to Favourites" else "Removed from Favourites",
+                    Toast.LENGTH_SHORT).show()
             }
         )
-        binding.rvSeries.apply { layoutManager = GridLayoutManager(requireContext(), 3); adapter = seriesAdapter }
+        binding.rvSeries.apply {
+            layoutManager = GridLayoutManager(requireContext(), 3); adapter = seriesAdapter
+        }
 
         seasonAdapter = SeasonAdapter { season -> viewModel.selectSeason(season) }
         binding.rvSeasons.apply {
@@ -71,12 +130,12 @@ class SeriesFragment : Fragment() {
         }
 
         episodeAdapter = EpisodeAdapter { episode ->
-            val eps        = viewModel.episodes.value
-            val index      = eps.indexOfFirst { it.id == episode.id }
-            val sName      = viewModel.selectedSeries.value?.name ?: ""
-            val season     = viewModel.selectedSeason.value
-            val sId        = viewModel.selectedSeries.value?.seriesId ?: 0
-            val cover      = viewModel.selectedSeries.value?.cover ?: ""
+            val eps    = viewModel.episodes.value
+            val index  = eps.indexOfFirst { it.id == episode.id }
+            val sName  = viewModel.selectedSeries.value?.name ?: ""
+            val season = viewModel.selectedSeason.value
+            val sId    = viewModel.selectedSeries.value?.seriesId ?: 0
+            val cover  = viewModel.selectedSeries.value?.cover ?: ""
             val urls   = ArrayList(eps.map { viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv") })
             val titles = ArrayList(eps.map { "$sName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}" })
             val ids    = ArrayList(eps.map { "series_${sId}_ep_${it.id}" })
@@ -90,7 +149,9 @@ class SeriesFragment : Fragment() {
                 putExtra(PlayerActivity.EXTRA_TYPE, "series")
             })
         }
-        binding.rvEpisodes.apply { layoutManager = LinearLayoutManager(requireContext()); adapter = episodeAdapter }
+        binding.rvEpisodes.apply {
+            layoutManager = LinearLayoutManager(requireContext()); adapter = episodeAdapter
+        }
     }
 
     private fun observeViewModel() {
@@ -108,10 +169,12 @@ class SeriesFragment : Fragment() {
                     }
                 }
                 launch { viewModel.seriesList.collect { list -> _binding?.let { seriesAdapter.submitList(list) } } }
-                launch { viewModel.seasons.collect { seasons ->
-                    _binding ?: return@collect; seasonAdapter.submitList(seasons)
-                    binding.rvSeasons.visibility = if (seasons.isEmpty()) View.GONE else View.VISIBLE
-                }}
+                launch {
+                    viewModel.seasons.collect { seasons ->
+                        _binding ?: return@collect; seasonAdapter.submitList(seasons)
+                        binding.rvSeasons.visibility = if (seasons.isEmpty()) View.GONE else View.VISIBLE
+                    }
+                }
                 launch { viewModel.episodes.collect { eps -> _binding?.let { episodeAdapter.submitList(eps) } } }
                 launch {
                     viewModel.selectedSeries.collect { series ->
@@ -124,19 +187,13 @@ class SeriesFragment : Fragment() {
                         b.ivSeriesCover.loadUrl(series.cover, series.name)
                     }
                 }
-                launch { viewModel.loading.collect { loading ->
-                    _binding?.progressBar?.visibility = if (loading) View.VISIBLE else View.GONE
-                }}
+                launch {
+                    viewModel.loading.collect { loading ->
+                        _binding?.progressBar?.visibility = if (loading) View.VISIBLE else View.GONE
+                    }
+                }
             }
         }
-    }
-
-    private fun setupSearch() {
-        binding.etSearch.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) { viewModel.search(s.toString()) }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
     }
 
     override fun onDestroyView() { super.onDestroyView(); _binding = null }
