@@ -32,20 +32,30 @@ class MoviesViewModel @Inject constructor(
     val loading          = MutableStateFlow(false)
     val error            = MutableStateFlow<String?>(null)
 
-    // Required by HomeFragment
-    val allMoviesCount   = MutableStateFlow(0)
-    val lastUpdated      = MutableStateFlow(0L)
+    // Dashboard stats
+    val allMoviesCount = MutableStateFlow(0)
+    val lastUpdated    = MutableStateFlow(0L)
 
-    private val allMovies  = MutableStateFlow<List<VodStream>>(emptyList())
-    private var dataLoaded = false
+    private val allMovies      = MutableStateFlow<List<VodStream>>(emptyList())
+    private var dataLoaded     = false
+    private var fetchInProgress = false
 
     init { loadAll() }
 
-    fun loadAll() { if (!dataLoaded) fetchData() }
+    fun loadAll() {
+        if (dataLoaded && allMovies.value.isNotEmpty()) return
+        if (fetchInProgress) return
+        fetchData()
+    }
 
-    fun forceRefresh() { dataLoaded = false; repo.clearMovieCache(); fetchData() }
+    fun forceRefresh() {
+        dataLoaded = false; fetchInProgress = false
+        repo.clearMovieCache(); fetchData()
+    }
 
     private fun fetchData() {
+        if (fetchInProgress) return
+        fetchInProgress = true
         viewModelScope.launch {
             loading.value = true; error.value = null
             try {
@@ -54,10 +64,10 @@ class MoviesViewModel @Inject constructor(
 
                 catsD.await().onSuccess { list ->
                     categories.value = listOf(
-                        Category(MOVIE_CAT_ALL,            "All", 0),
-                        Category(MOVIE_CAT_FAVOURITES,     "Favourites", 0),
+                        Category(MOVIE_CAT_ALL,            "All",               0),
+                        Category(MOVIE_CAT_FAVOURITES,     "Favourites",        0),
                         Category(MOVIE_CAT_CONTINUE,       "Continue Watching", 0),
-                        Category(MOVIE_CAT_RECENTLY_ADDED, "Recently Added", 0)
+                        Category(MOVIE_CAT_RECENTLY_ADDED, "Recently Added",    0)
                     ) + list
                     selectedCategory.value = list.firstOrNull()
                 }
@@ -67,22 +77,26 @@ class MoviesViewModel @Inject constructor(
                     allMoviesCount.value = list.size
                     lastUpdated.value    = System.currentTimeMillis()
                     val catId = selectedCategory.value?.categoryId
-                    movies.value = if (catId != null) list.filter { it.categoryId == catId } else list
+                    val shown = if (catId != null) list.filter { it.categoryId == catId } else list
+                    movies.value = if (shown.isEmpty()) list else shown
                     if (movies.value.isNotEmpty()) selectedMovie.value = movies.value.first()
                     dataLoaded = true
                 }.onFailure { e -> error.value = e.message }
+
             } catch (e: Exception) {
                 error.value = e.message
-            } finally { loading.value = false }
+            } finally { loading.value = false; fetchInProgress = false }
         }
     }
 
     fun filterByCategory(category: Category) {
         selectedCategory.value = category
+        if (allMovies.value.isEmpty()) { loadAll(); return }
         val filtered = when (category.categoryId) {
             MOVIE_CAT_ALL -> allMovies.value
             MOVIE_CAT_FAVOURITES -> {
-                val ids = favouritesManager.getByType("movie").mapNotNull { it.id.removePrefix("movie_").toIntOrNull() }
+                val ids = favouritesManager.getByType("movie")
+                    .mapNotNull { it.id.removePrefix("movie_").toIntOrNull() }
                 allMovies.value.filter { it.streamId in ids }
             }
             MOVIE_CAT_CONTINUE -> {
@@ -90,11 +104,12 @@ class MoviesViewModel @Inject constructor(
                 val movieMap = allMovies.value.associateBy { "movie_${it.streamId}" }
                 watched.mapNotNull { movieMap[it.contentId] }
             }
-            MOVIE_CAT_RECENTLY_ADDED -> allMovies.value.sortedByDescending { it.added?.toLongOrNull() ?: 0L }.take(30)
+            MOVIE_CAT_RECENTLY_ADDED ->
+                allMovies.value.sortedByDescending { it.added?.toLongOrNull() ?: 0L }.take(30)
             else -> allMovies.value.filter { it.categoryId == category.categoryId }
         }
-        movies.value = filtered
-        if (filtered.isNotEmpty()) selectedMovie.value = filtered.first()
+        movies.value = if (filtered.isEmpty()) allMovies.value else filtered
+        if (movies.value.isNotEmpty()) selectedMovie.value = movies.value.first()
     }
 
     fun refreshContinueWatching() {
