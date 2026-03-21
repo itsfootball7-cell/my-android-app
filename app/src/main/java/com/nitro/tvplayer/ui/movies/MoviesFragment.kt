@@ -19,7 +19,6 @@ import com.nitro.tvplayer.ui.livetv.CategoryAdapter
 import com.nitro.tvplayer.utils.FavouriteItem
 import com.nitro.tvplayer.utils.FavouritesManager
 import com.nitro.tvplayer.utils.PlaybackPositionManager
-import com.nitro.tvplayer.utils.loadUrl
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -66,17 +65,22 @@ class MoviesFragment : Fragment() {
         moviesAdapter = MoviesAdapter(
             positionManager = positionManager,
             onClick = { movie ->
-                // Tap → select + open detail sheet
+                // TAP → select movie and open detail sheet with Play button
                 viewModel.selectMovie(movie)
                 MovieDetailBottomSheet.newInstance()
                     .show(parentFragmentManager, MovieDetailBottomSheet.TAG)
             },
             onLongPress = { movie ->
-                val url = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
+                // LONG PRESS → toggle favourite
+                val url   = viewModel.buildStreamUrl(movie.streamId, movie.extension ?: "mp4")
                 val added = favouritesManager.toggle(FavouriteItem(
-                    id = "movie_${movie.streamId}", name = movie.name,
-                    icon = movie.streamIcon, type = "movie",
-                    streamUrl = url, categoryId = movie.categoryId, extra = movie.extension
+                    id         = "movie_${movie.streamId}",
+                    name       = movie.name,
+                    icon       = movie.streamIcon,
+                    type       = "movie",
+                    streamUrl  = url,
+                    categoryId = movie.categoryId,
+                    extra      = movie.extension
                 ))
                 Toast.makeText(requireContext(),
                     if (added) "⭐ Added to Favourites" else "Removed from Favourites",
@@ -96,6 +100,7 @@ class MoviesFragment : Fragment() {
                     viewModel.categories.collect { cats ->
                         _binding ?: return@collect
                         categoryAdapter.submitList(cats)
+                        // Auto-select first real category (skip special ones)
                         val firstReal = cats.indexOfFirst { c ->
                             c.categoryId != MOVIE_CAT_ALL &&
                             c.categoryId != MOVIE_CAT_FAVOURITES &&
