@@ -14,54 +14,45 @@ import com.nitro.tvplayer.utils.loadUrl
 
 class MoviesAdapter(
     private val positionManager: PlaybackPositionManager,
-    private val onClick:     (VodStream) -> Unit,   // single tap → play
-    private val onLongPress: (VodStream) -> Unit    // long press → options
+    private val onClick:     (VodStream) -> Unit,
+    private val onLongPress: (VodStream) -> Unit
 ) : ListAdapter<VodStream, MoviesAdapter.VH>(DIFF) {
 
-    inner class VH(val binding: ItemMovieBinding) : RecyclerView.ViewHolder(binding.root)
+    inner class VH(val b: ItemMovieBinding) : RecyclerView.ViewHolder(b.root)
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
         VH(ItemMovieBinding.inflate(LayoutInflater.from(parent.context), parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val movie = getItem(position)
-        with(holder.binding) {
-            ivPoster.loadUrl(movie.streamIcon, movie.name)
-            tvName.text = movie.name
+        with(holder.b) {
+            // Uses ORIGINAL IDs: ivMoviePoster, tvMovieName, tvMovieRating
+            ivMoviePoster.loadUrl(movie.streamIcon, movie.name)
+            tvMovieName.text = movie.name
 
-            // ── Rating badge ──────────────────────────────────
+            // Rating badge
             val rating = movie.rating5?.let { "%.0f".format(it) }
                 ?: movie.rating?.toDoubleOrNull()?.let { "%.0f".format(it) }
             if (!rating.isNullOrBlank() && rating != "0") {
-                tvRatingBadge.text       = rating
-                tvRatingBadge.visibility = View.VISIBLE
+                tvMovieRating.text       = rating
+                tvMovieRating.visibility = View.VISIBLE
                 val rv = rating.toIntOrNull() ?: 0
-                tvRatingBadge.setBackgroundResource(when {
+                tvMovieRating.setBackgroundResource(when {
                     rv >= 7 -> R.drawable.badge_green
                     rv >= 5 -> R.drawable.badge_orange
                     else    -> R.drawable.badge_red
                 })
             } else {
-                tvRatingBadge.visibility = View.GONE
+                tvMovieRating.visibility = View.GONE
             }
 
-            // ── Continue watching progress bar ─────────────────
+            // Continue watching progress
             val pct = positionManager.getProgressPercent("movie_${movie.streamId}")
-            if (pct > 0) {
-                progressWatched.visibility = View.VISIBLE
-                progressWatched.progress   = pct
-            } else {
-                progressWatched.visibility = View.GONE
-            }
+            progressWatched.visibility = if (pct > 0) View.VISIBLE else View.GONE
+            if (pct > 0) progressWatched.progress = pct
 
-            // ── Single tap → PLAY directly ─────────────────────
-            root.setOnClickListener { onClick(movie) }
-
-            // ── Long press → OPTIONS (favourite/detail) ────────
-            root.setOnLongClickListener {
-                onLongPress(movie)
-                true
-            }
+            root.setOnClickListener     { onClick(movie) }
+            root.setOnLongClickListener { onLongPress(movie); true }
         }
     }
 
