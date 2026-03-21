@@ -21,85 +21,91 @@ const val SERIES_CAT_RECENTLY_ADDED = "__RECENT__"
 @HiltViewModel
 class SeriesViewModel @Inject constructor(
     private val repo: ContentRepository,
-    private val fav: FavouritesManager,
-    private val pos: PlaybackPositionManager
+    private val fav:  FavouritesManager,
+    private val pos:  PlaybackPositionManager
 ) : ViewModel() {
 
-    val categories       = MutableStateFlow<List<Category>>(emptyList())
-    val seriesList       = MutableStateFlow<List<SeriesItem>>(emptyList())
-    val selectedSeries   = MutableStateFlow<SeriesItem?>(null)
+    val categories     = MutableStateFlow<List<Category>>(emptyList())
+    val seriesList     = MutableStateFlow<List<SeriesItem>>(emptyList())
+    val selectedSeries = MutableStateFlow<SeriesItem?>(null)
     val selectedCategory = MutableStateFlow<Category?>(null)
-    val seasons          = MutableStateFlow<List<String>>(emptyList())
-    val episodes         = MutableStateFlow<List<Episode>>(emptyList())
-    val selectedSeason   = MutableStateFlow("1")
-    val loading          = MutableStateFlow(false)
-    val error            = MutableStateFlow<String?>(null)
-    val allSeriesCount   = MutableStateFlow(0)
-    val lastUpdated      = MutableStateFlow(0L)
+    val seasons        = MutableStateFlow<List<String>>(emptyList())
+    val episodes       = MutableStateFlow<List<Episode>>(emptyList())
+    val selectedSeason = MutableStateFlow("1")
+    val loading        = MutableStateFlow(false)
+    val error          = MutableStateFlow<String?>(null)
+    val allSeriesCount = MutableStateFlow(0)
+    val lastUpdated    = MutableStateFlow(0L)
 
-    private var raw: List<SeriesItem> = emptyList()
+    private var raw  = listOf<SeriesItem>()
     private val epCache = mutableMapOf<Int, Map<String, List<Episode>>>()
-    private var loaded  = false
-    private var busy    = false
+    private var done = false
+    private var busy = false
 
     init { loadAll() }
 
     fun loadAll() {
-        if (loaded && raw.isNotEmpty()) return
+        if (done && raw.isNotEmpty()) return
         if (busy) return
-        fetch()
+        doLoad()
     }
 
     fun forceRefresh() {
-        loaded = false; busy = false; raw = emptyList()
-        epCache.clear(); repo.clearSeriesCache(); fetch()
+        done = false; busy = false; raw = emptyList()
+        epCache.clear(); repo.clearSeriesCache(); doLoad()
     }
 
-    private fun fetch() {
+    private fun doLoad() {
         busy = true
         viewModelScope.launch {
             loading.value = true
             error.value   = null
             try {
-                var realCats = emptyList<Category>()
-
-                repo.getSeriesCategories().onSuccess { list ->
-                    realCats = list
-                    categories.value = buildList {
-                        add(Category(SERIES_CAT_ALL,            "All",               0))
-                        add(Category(SERIES_CAT_FAVOURITES,     "Favourites",        0))
-                        add(Category(SERIES_CAT_CONTINUE,       "Continue Watching", 0))
-                        add(Category(SERIES_CAT_RECENTLY_ADDED, "Recently Added",    0))
-                        addAll(list)
+                // Step 1 — categories (don't fail hard if this errors)
+                var realCats = listOf<Category>()
+                try {
+                    repo.getSeriesCategories().onSuccess { list ->
+                        realCats = list
+                        categories.value = buildList {
+                            add(Category(SERIES_CAT_ALL,            "All",               0))
+                            add(Category(SERIES_CAT_FAVOURITES,     "Favourites",        0))
+                            add(Category(SERIES_CAT_CONTINUE,       "Continue Watching", 0))
+                            add(Category(SERIES_CAT_RECENTLY_ADDED, "Recently Added",    0))
+                            addAll(list)
+                        }
                     }
-                }.onFailure {
+                } catch (e: Exception) {
                     categories.value = listOf(Category(SERIES_CAT_ALL, "All", 0))
                 }
 
+                // Step 2 — series list
                 repo.getSeries().onSuccess { list ->
                     raw = list
                     allSeriesCount.value = list.size
                     lastUpdated.value    = System.currentTimeMillis()
-                    loaded = true
+                    done = true
 
-                    val first = realCats.firstOrNull()
-                    val show  = if (first != null) {
-                        list.filter { it.categoryId == first.categoryId }
-                            .takeIf { it.isNotEmpty() } ?: list
+                    // Show first category that has items, otherwise show ALL
+                    val firstCat  = realCats.firstOrNull()
+                    val toShow    = if (firstCat != null) {
+                        val f = list.filter { it.categoryId == firstCat.categoryId }
+                        if (f.isNotEmpty()) { selectedCategory.value = firstCat; f } else list
                     } else list
 
-                    selectedCategory.value = first
-                    seriesList.value = show
+                    seriesList.value = toShow   // ← adapter reads this
 
-                    show.firstOrNull()?.let { s ->
-                        selectedSeries.value = s; bgLoadEpisodes(s)
+                    toShow.firstOrNull()?.let { first ->
+                        selectedSeries.value = first
+                        bgLoadEp(first)
                     }
-                }.onFailure { e -> error.value = e.message }
-
+                }.onFailure { e ->
+                    error.value = e.message
+                }
             } catch (e: Exception) {
                 error.value = e.message
             } finally {
-                loading.value = false; busy = false
+                loading.value = false
+                busy          = false
             }
         }
     }
@@ -107,7 +113,7 @@ class SeriesViewModel @Inject constructor(
     fun filterByCategory(cat: Category) {
         if (raw.isEmpty()) { loadAll(); return }
         selectedCategory.value = cat
-        val filtered = when (cat.categoryId) {
+        val result = when (cat.categoryId) {
             SERIES_CAT_ALL -> raw
             SERIES_CAT_FAVOURITES -> {
                 val ids = fav.getByType("series")
@@ -123,38 +129,47 @@ class SeriesViewModel @Inject constructor(
             }
             SERIES_CAT_RECENTLY_ADDED ->
                 raw.sortedByDescending { it.lastModified?.toLongOrNull() ?: 0L }.take(30)
-            else -> raw.filter { it.categoryId == cat.categoryId }
+            else ->
+                raw.filter { it.categoryId == cat.categoryId }
         }
-        seriesList.value = filtered.ifEmpty { raw }
-        seriesList.value.firstOrNull()?.let { s ->
-            selectedSeries.value = s; bgLoadEpisodes(s)
-        } ?: run { seasons.value = emptyList(); episodes.value = emptyList() }
+        seriesList.value = result.ifEmpty { raw }
+        seriesList.value.firstOrNull()?.let { first ->
+            selectedSeries.value = first; bgLoadEp(first)
+        }
     }
 
     fun selectSeries(s: SeriesItem) {
         if (selectedSeries.value?.seriesId == s.seriesId) return
-        selectedSeries.value = s; loadEpisodes(s)
+        selectedSeries.value = s
+        loadEp(s)
     }
 
-    private fun loadEpisodes(s: SeriesItem) {
+    private fun loadEp(s: SeriesItem) {
         viewModelScope.launch {
             epCache[s.seriesId]?.let { applyEp(it); return@launch }
             try {
-                repo.getSeriesInfo(s.seriesId.toString()).onSuccess { info ->
-                    val e = info.episodes ?: emptyMap(); epCache[s.seriesId] = e; applyEp(e)
-                }.onFailure { seasons.value = emptyList(); episodes.value = emptyList() }
-            } catch (e: Exception) { seasons.value = emptyList(); episodes.value = emptyList() }
+                repo.getSeriesInfo(s.seriesId.toString())
+                    .onSuccess { info ->
+                        val e = info.episodes ?: emptyMap()
+                        epCache[s.seriesId] = e; applyEp(e)
+                    }
+                    .onFailure { seasons.value = emptyList(); episodes.value = emptyList() }
+            } catch (e: Exception) {
+                seasons.value = emptyList(); episodes.value = emptyList()
+            }
         }
     }
 
-    private fun bgLoadEpisodes(s: SeriesItem) {
+    private fun bgLoadEp(s: SeriesItem) {
         viewModelScope.launch {
             epCache[s.seriesId]?.let {
-                if (selectedSeries.value?.seriesId == s.seriesId) applyEp(it); return@launch
+                if (selectedSeries.value?.seriesId == s.seriesId) applyEp(it)
+                return@launch
             }
             try {
                 repo.getSeriesInfo(s.seriesId.toString()).onSuccess { info ->
-                    val e = info.episodes ?: emptyMap(); epCache[s.seriesId] = e
+                    val e = info.episodes ?: emptyMap()
+                    epCache[s.seriesId] = e
                     if (selectedSeries.value?.seriesId == s.seriesId) applyEp(e)
                 }
             } catch (_: Exception) {}
@@ -163,8 +178,9 @@ class SeriesViewModel @Inject constructor(
 
     private fun applyEp(eps: Map<String, List<Episode>>) {
         val keys = eps.keys.sortedBy { it.toIntOrNull() ?: 0 }
-        seasons.value = keys; selectedSeason.value = keys.firstOrNull() ?: "1"
-        episodes.value = eps[selectedSeason.value] ?: emptyList()
+        seasons.value        = keys
+        selectedSeason.value = keys.firstOrNull() ?: "1"
+        episodes.value       = eps[selectedSeason.value] ?: emptyList()
     }
 
     fun selectSeason(s: String) {
@@ -178,7 +194,9 @@ class SeriesViewModel @Inject constructor(
             val cat = selectedCategory.value
             if (cat == null || cat.categoryId == SERIES_CAT_ALL) raw
             else raw.filter { it.categoryId == cat.categoryId }.ifEmpty { raw }
-        } else raw.filter { it.name.contains(q, ignoreCase = true) }
+        } else {
+            raw.filter { it.name.contains(q, ignoreCase = true) }
+        }
     }
 
     fun buildEpisodeUrl(id: String, ext: String) = repo.buildSeriesUrl(id, ext)
