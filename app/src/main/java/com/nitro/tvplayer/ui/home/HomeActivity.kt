@@ -2,6 +2,8 @@ package com.nitro.tvplayer.ui.home
 
 import android.content.pm.ActivityInfo
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.fragment.app.Fragment
 import com.nitro.tvplayer.R
@@ -13,6 +15,9 @@ import com.nitro.tvplayer.ui.series.SeriesFragment
 import com.nitro.tvplayer.ui.settings.SettingsFragment
 import com.nitro.tvplayer.utils.PrefsManager
 import dagger.hilt.android.AndroidEntryPoint
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -23,6 +28,15 @@ class HomeActivity : AppCompatActivity() {
 
     private val fragmentCache = mutableMapOf<String, Fragment>()
     private var activeTag = TAB_HOME
+
+    private val clockHandler  = Handler(Looper.getMainLooper())
+    private val clockRunnable = object : Runnable {
+        override fun run() {
+            binding.tvNavDateTime.text =
+                SimpleDateFormat("hh:mm a  |  MMM dd, yyyy", Locale.getDefault()).format(Date())
+            clockHandler.postDelayed(this, 30_000)
+        }
+    }
 
     companion object {
         const val TAB_HOME     = "home"
@@ -48,7 +62,6 @@ class HomeActivity : AppCompatActivity() {
                 }
         }
 
-        // Wire up tab clicks — uses TextView IDs from activity_home.xml
         binding.tabHome.setOnClickListener     { navigateTo(TAB_HOME) }
         binding.tabLive.setOnClickListener     { navigateTo(TAB_LIVE) }
         binding.tabMovies.setOnClickListener   { navigateTo(TAB_MOVIES) }
@@ -58,11 +71,17 @@ class HomeActivity : AppCompatActivity() {
 
         highlightTab(activeTag)
         showFragment(activeTag)
+        clockHandler.post(clockRunnable)
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putString("active_tab", activeTag)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        clockHandler.removeCallbacks(clockRunnable)
     }
 
     fun navigateTo(tag: String) {
@@ -75,7 +94,6 @@ class HomeActivity : AppCompatActivity() {
             binding.tabHome, binding.tabLive, binding.tabMovies,
             binding.tabSeries, binding.tabSearch, binding.tabSettings
         ).forEach { it.isSelected = false }
-
         when (tag) {
             TAB_HOME     -> binding.tabHome.isSelected     = true
             TAB_LIVE     -> binding.tabLive.isSelected     = true
@@ -90,14 +108,9 @@ class HomeActivity : AppCompatActivity() {
         activeTag = tag
         val tx     = supportFragmentManager.beginTransaction()
         val target = fragmentCache.getOrPut(tag) { createFragment(tag) }
-
-        fragmentCache.forEach { (t, f) ->
-            if (t != tag && f.isAdded) tx.hide(f)
-        }
-
+        fragmentCache.forEach { (t, f) -> if (t != tag && f.isAdded) tx.hide(f) }
         if (!target.isAdded) tx.add(R.id.fragmentContainer, target, tag)
         else tx.show(target)
-
         tx.commitAllowingStateLoss()
     }
 
