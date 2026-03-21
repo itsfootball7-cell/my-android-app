@@ -6,9 +6,9 @@
     android:orientation="horizontal"
     android:background="@color/bg_primary">
 
-    <!-- ── LEFT: Category sidebar ── -->
+    <!-- LEFT: Categories -->
     <LinearLayout
-        android:layout_width="160dp"
+        android:layout_width="140dp"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="@color/bg_sidebar">
@@ -17,225 +17,160 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="GENRES"
-            android:textColor="#40FFFFFF"
+            android:textColor="#4DFFFFFF"
             android:textSize="9sp"
-            android:textStyle="bold"
-            android:letterSpacing="0.15"
-            android:paddingStart="12dp"
-            android:paddingTop="12dp"
-            android:paddingBottom="6dp"/>
+            android:letterSpacing="0.1"
+            android:padding="12dp"
+            android:paddingBottom="4dp"/>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvCategories"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:clipToPadding="false"/>
+            android:padding="6dp"/>
 
     </LinearLayout>
 
-    <!-- ── MIDDLE: Series grid ── -->
+    <View android:layout_width="1dp" android:layout_height="match_parent"
+        android:background="#14FFFFFF"/>
+
+    <!-- MIDDLE: Series Grid -->
     <LinearLayout
-        android:layout_width="320dp"
+        android:layout_width="220dp"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:background="@color/bg_middle">
 
-        <!-- Header + search icon -->
-        <LinearLayout
+        <!-- Search bar — always visible -->
+        <EditText
+            android:id="@+id/etSearch"
             android:layout_width="match_parent"
-            android:layout_height="44dp"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="12dp"
-            android:paddingEnd="8dp"
-            android:background="@color/bg_header">
-
-            <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="SERIES"
-                android:textColor="#60FFFFFF"
-                android:textSize="10sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.1"/>
-
-            <TextView
-                android:id="@+id/btnSearch"
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:text="🔍"
-                android:textSize="16sp"
-                android:gravity="center"
-                android:background="@drawable/btn_player_control"
-                android:clickable="true"
-                android:focusable="true"/>
-
-        </LinearLayout>
-
-        <!-- Search bar (hidden until icon is tapped) -->
-        <LinearLayout
-            android:id="@+id/searchBarContainer"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="8dp"
-            android:paddingEnd="8dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="4dp"
-            android:background="@color/bg_header"
-            android:visibility="gone">
-
-            <EditText
-                android:id="@+id/etSearch"
-                android:layout_width="0dp"
-                android:layout_height="36dp"
-                android:layout_weight="1"
-                android:hint="Search series..."
-                android:textColor="#FFFFFF"
-                android:textColorHint="#60FFFFFF"
-                android:textSize="12sp"
-                android:background="@drawable/input_bg"
-                android:paddingStart="12dp"
-                android:paddingEnd="8dp"
-                android:inputType="text"
-                android:singleLine="true"
-                android:imeOptions="actionSearch"
-                android:layout_marginEnd="6dp"/>
-
-            <TextView
-                android:id="@+id/btnClearSearch"
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:text="✕"
-                android:textSize="12sp"
-                android:textColor="#80FFFFFF"
-                android:gravity="center"
-                android:clickable="true"
-                android:focusable="true"/>
-
-        </LinearLayout>
+            android:layout_height="36dp"
+            android:layout_margin="8dp"
+            android:hint="Search series..."
+            android:textColorHint="#40FFFFFF"
+            android:textColor="@color/white"
+            android:textSize="11sp"
+            android:background="@drawable/input_bg"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:inputType="text"
+            android:imeOptions="actionSearch"
+            android:singleLine="true"/>
 
         <ProgressBar
             android:id="@+id/progressBar"
-            android:layout_width="match_parent"
-            android:layout_height="2dp"
-            android:indeterminateTint="@color/accent_orange"
-            style="@style/Widget.AppCompat.ProgressBar.Horizontal"
-            android:indeterminate="true"
-            android:visibility="gone"/>
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone"
+            android:indeterminateTint="@color/accent_orange"/>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvSeries"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:clipToPadding="false"
-            android:padding="4dp"/>
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="4dp"
+            android:clipToPadding="false"/>
 
     </LinearLayout>
 
-    <!-- ── RIGHT: Series detail + episodes ── -->
+    <View android:layout_width="1dp" android:layout_height="match_parent"
+        android:background="#14FFFFFF"/>
+
+    <!-- RIGHT: Series Detail + Episodes -->
     <LinearLayout
         android:layout_width="0dp"
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:background="@color/bg_primary">
+        android:padding="12dp">
 
-        <!-- Series info -->
+        <!-- Series info header -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:padding="12dp">
+            android:layout_marginBottom="10dp">
 
             <ImageView
                 android:id="@+id/ivSeriesCover"
-                android:layout_width="80dp"
-                android:layout_height="112dp"
+                android:layout_width="60dp"
+                android:layout_height="86dp"
                 android:scaleType="centerCrop"
-                android:layout_marginEnd="14dp"
-                android:background="@drawable/poster_placeholder"/>
+                android:background="@drawable/poster_placeholder"
+                android:layout_marginEnd="12dp"/>
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                android:gravity="top">
+                android:orientation="vertical">
 
                 <TextView
                     android:id="@+id/tvSeriesTitle"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
+                    android:textColor="@color/white"
+                    android:textSize="15sp"
                     android:textStyle="bold"
-                    android:maxLines="2"
-                    android:ellipsize="end"
                     android:layout_marginBottom="4dp"/>
 
                 <TextView
                     android:id="@+id/tvSeriesInfo"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textColor="#80FFFFFF"
-                    android:textSize="10sp"
+                    android:textSize="11sp"
                     android:layout_marginBottom="4dp"/>
 
                 <TextView
                     android:id="@+id/tvSeriesRating"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textColor="#FFB300"
-                    android:textSize="11sp"
-                    android:layout_marginBottom="6dp"/>
-
-                <TextView
-                    android:id="@+id/tvSeriesPlot"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:textColor="#AAFFFFFF"
-                    android:textSize="10sp"
-                    android:maxLines="4"
-                    android:ellipsize="end"
-                    android:lineSpacingMultiplier="1.3"/>
+                    android:textColor="@color/accent_orange"
+                    android:textSize="12sp"/>
 
             </LinearLayout>
-
         </LinearLayout>
 
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#20FFFFFF"/>
-
-        <!-- Season tabs -->
+        <!-- Season selector -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvSeasons"
             android:layout_width="match_parent"
-            android:layout_height="40dp"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:clipToPadding="false"/>
+            android:layout_height="32dp"
+            android:layout_marginBottom="8dp"/>
 
-        <!-- Episodes list -->
+        <!-- Plot -->
         <TextView
+            android:id="@+id/tvSeriesPlot"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:textColor="#80FFFFFF"
+            android:textSize="11sp"
+            android:lineSpacingMultiplier="1.5"
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:layout_marginBottom="8dp"/>
+
+        <View android:layout_width="match_parent" android:layout_height="0.5dp"
+            android:background="#14FFFFFF" android:layout_marginBottom="8dp"/>
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
             android:text="EPISODES"
-            android:textColor="#40FFFFFF"
+            android:textColor="#4DFFFFFF"
             android:textSize="9sp"
-            android:textStyle="bold"
             android:letterSpacing="0.1"
-            android:paddingStart="14dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="4dp"/>
+            android:layout_marginBottom="6dp"/>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/rvEpisodes"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:clipToPadding="false"/>
+            android:layout_weight="1"/>
 
     </LinearLayout>
 
