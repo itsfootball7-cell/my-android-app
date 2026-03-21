@@ -45,19 +45,19 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        setupInfo()
+        setupFooter()
         setupClicks()
         observeAll()
+        // Preload all 3 sections simultaneously
         liveVm.loadAll()
         moviesVm.loadAll()
         seriesVm.loadAll()
     }
 
-    private fun setupInfo() {
+    private fun setupFooter() {
         val u = prefs.getUserInfo()
         binding.tvLoggedIn.text = "Logged in:  ${u?.username ?: "—"}"
         binding.tvExpiry.text   = "Expiration : ${formatExpiry(u?.expDate)}"
-        binding.tvDateTime.text = SimpleDateFormat("hh:mm a    MMM dd, yyyy", Locale.getDefault()).format(Date())
     }
 
     private fun formatExpiry(exp: String?): String {
@@ -70,28 +70,29 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupClicks() {
-        binding.cardLiveTv.setOnClickListener       { onNavigate?.invoke("live") }
-        binding.cardMovies.setOnClickListener        { onNavigate?.invoke("movies") }
-        binding.cardSeries.setOnClickListener        { onNavigate?.invoke("series") }
-        binding.btnMasterSearch.setOnClickListener   { onNavigate?.invoke("search") }
-        binding.cardSearch.setOnClickListener        { onNavigate?.invoke("search") }
-        binding.cardSettings.setOnClickListener      { onNavigate?.invoke("settings") }
-        binding.cardSubscription.setOnClickListener  { onNavigate?.invoke("settings") }
+        // Cards navigate to their section
+        binding.cardLiveTv.setOnClickListener  { onNavigate?.invoke("live") }
+        binding.cardMovies.setOnClickListener  { onNavigate?.invoke("movies") }
+        binding.cardSeries.setOnClickListener  { onNavigate?.invoke("series") }
 
+        // Refresh buttons
         binding.btnRefreshLive.setOnClickListener {
             liveVm.forceRefresh()
             binding.circularLive.isSpinning = true
-            binding.btnRefreshLive.animate().rotation(binding.btnRefreshLive.rotation + 360f).setDuration(600).start()
+            binding.btnRefreshLive.animate()
+                .rotation(binding.btnRefreshLive.rotation + 360f).setDuration(600).start()
         }
         binding.btnRefreshMovies.setOnClickListener {
             moviesVm.forceRefresh()
             binding.circularMovies.isSpinning = true
-            binding.btnRefreshMovies.animate().rotation(binding.btnRefreshMovies.rotation + 360f).setDuration(600).start()
+            binding.btnRefreshMovies.animate()
+                .rotation(binding.btnRefreshMovies.rotation + 360f).setDuration(600).start()
         }
         binding.btnRefreshSeries.setOnClickListener {
             seriesVm.forceRefresh()
             binding.circularSeries.isSpinning = true
-            binding.btnRefreshSeries.animate().rotation(binding.btnRefreshSeries.rotation + 360f).setDuration(600).start()
+            binding.btnRefreshSeries.animate()
+                .rotation(binding.btnRefreshSeries.rotation + 360f).setDuration(600).start()
         }
     }
 
@@ -99,12 +100,12 @@ class HomeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
 
-                // ─── Live TV ────────────────────────────────────────
+                // ── Live TV ──────────────────────────────────────────
                 launch {
                     liveVm.loading.collect { v: Boolean ->
                         _binding ?: return@collect
                         if (v) { binding.circularLive.isSpinning = true; binding.circularLive.progress = 0f }
-                        else binding.circularLive.isSpinning = false
+                        else   { binding.circularLive.isSpinning = false }
                     }
                 }
                 launch {
@@ -125,12 +126,12 @@ class HomeFragment : Fragment() {
                     }
                 }
 
-                // ─── Movies ─────────────────────────────────────────
+                // ── Movies ───────────────────────────────────────────
                 launch {
                     moviesVm.loading.collect { v: Boolean ->
                         _binding ?: return@collect
                         if (v) { binding.circularMovies.isSpinning = true; binding.circularMovies.progress = 0f }
-                        else binding.circularMovies.isSpinning = false
+                        else   { binding.circularMovies.isSpinning = false }
                     }
                 }
                 launch {
@@ -151,12 +152,12 @@ class HomeFragment : Fragment() {
                     }
                 }
 
-                // ─── Series ─────────────────────────────────────────
+                // ── Series ───────────────────────────────────────────
                 launch {
                     seriesVm.loading.collect { v: Boolean ->
                         _binding ?: return@collect
                         if (v) { binding.circularSeries.isSpinning = true; binding.circularSeries.progress = 0f }
-                        else binding.circularSeries.isSpinning = false
+                        else   { binding.circularSeries.isSpinning = false }
                     }
                 }
                 launch {
@@ -184,10 +185,10 @@ class HomeFragment : Fragment() {
         if (ts == 0L) return "Last updated: —"
         val d = System.currentTimeMillis() - ts
         return "Last updated: " + when {
-            d < 60_000       -> "just now"
-            d < 3_600_000    -> "${d / 60_000} min ago"
-            d < 86_400_000   -> "${d / 3_600_000} hours ago"
-            else             -> "${d / 86_400_000} days ago"
+            d < 60_000     -> "just now"
+            d < 3_600_000  -> "${d / 60_000} min ago"
+            d < 86_400_000 -> "${d / 3_600_000} hours ago"
+            else           -> "${d / 86_400_000} days ago"
         }
     }
 
