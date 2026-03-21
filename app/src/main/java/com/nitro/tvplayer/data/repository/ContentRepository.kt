@@ -1,7 +1,12 @@
 package com.nitro.tvplayer.data.repository
 
 import com.nitro.tvplayer.data.api.XtremeCodesApi
-import com.nitro.tvplayer.data.model.*
+import com.nitro.tvplayer.data.model.Category
+import com.nitro.tvplayer.data.model.EpgResponse
+import com.nitro.tvplayer.data.model.LiveStream
+import com.nitro.tvplayer.data.model.SeriesInfo
+import com.nitro.tvplayer.data.model.SeriesItem
+import com.nitro.tvplayer.data.model.VodStream
 import com.nitro.tvplayer.utils.PrefsManager
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,135 +20,99 @@ class ContentRepository @Inject constructor(
     private fun user() = prefs.getUsername()
     private fun pass() = prefs.getPassword()
 
-    // ── In-memory cache with TTL (5 minutes) ──────────────────
+    // ── In-memory cache ───────────────────────────────────────
     private val CACHE_TTL = 5 * 60 * 1000L
 
-    private var cachedLiveCategories: List<Category>?  = null
-    private var cachedLiveStreams:     List<LiveStream>? = null
-    private var cachedVodCategories:  List<Category>?  = null
-    private var cachedVodStreams:      List<VodStream>? = null
-    private var cachedSeriesCategories: List<Category>? = null
-    private var cachedSeriesList:      List<SeriesItem>? = null
+    private var liveCats:   List<Category>?   = null; private var liveCatsTs  = 0L
+    private var liveStrs:   List<LiveStream>? = null; private var liveStrsTs  = 0L
+    private var vodCats:    List<Category>?   = null; private var vodCatsTs   = 0L
+    private var vodStrs:    List<VodStream>?  = null; private var vodStrsTs   = 0L
+    private var seriesCats: List<Category>?   = null; private var seriesCatsTs = 0L
+    private var seriesStrs: List<SeriesItem>? = null; private var seriesStrsTs = 0L
 
-    private var liveCatTs    = 0L
-    private var liveStreamTs = 0L
-    private var vodCatTs     = 0L
-    private var vodStreamTs  = 0L
-    private var seriesCatTs  = 0L
-    private var seriesListTs = 0L
+    private fun <T> isFresh(v: T?, ts: Long) = v != null && System.currentTimeMillis() - ts < CACHE_TTL
 
-    private val seriesInfoCache = mutableMapOf<String, Pair<SeriesInfo, Long>>()
+    // ── Cache clear methods (called by forceRefresh) ──────────
+    fun clearLiveCache() {
+        liveCats  = null; liveCatsTs  = 0L
+        liveStrs  = null; liveStrsTs  = 0L
+    }
+
+    fun clearMovieCache() {
+        vodCats = null; vodCatsTs = 0L
+        vodStrs = null; vodStrsTs = 0L
+    }
+
+    fun clearSeriesCache() {
+        seriesCats = null; seriesCatsTs = 0L
+        seriesStrs = null; seriesStrsTs = 0L
+    }
+
+    fun clearAllCache() { clearLiveCache(); clearMovieCache(); clearSeriesCache() }
 
     // ── Live ──────────────────────────────────────────────────
     suspend fun getLiveCategories(): Result<List<Category>> {
-        val now = System.currentTimeMillis()
-        cachedLiveCategories?.let {
-            if (now - liveCatTs < CACHE_TTL) return Result.success(it)
-        }
+        if (isFresh(liveCats, liveCatsTs)) return Result.success(liveCats!!)
         return safeCall {
-            api.getLiveCategories(url(), user(), pass()).body() ?: emptyList()
-        }.also { result ->
-            result.onSuccess { cachedLiveCategories = it; liveCatTs = now }
+            val r = api.getLiveCategories(url(), user(), pass()).body() ?: emptyList()
+            liveCats = r; liveCatsTs = System.currentTimeMillis(); r
         }
     }
 
     suspend fun getLiveStreams(categoryId: String? = null): Result<List<LiveStream>> {
-        // Only cache the "all" call
-        if (categoryId == null) {
-            val now = System.currentTimeMillis()
-            cachedLiveStreams?.let {
-                if (now - liveStreamTs < CACHE_TTL) return Result.success(it)
-            }
-            return safeCall {
-                api.getLiveStreams(url(), user(), pass()).body() ?: emptyList()
-            }.also { result ->
-                result.onSuccess { cachedLiveStreams = it; liveStreamTs = now }
-            }
-        }
+        if (categoryId == null && isFresh(liveStrs, liveStrsTs)) return Result.success(liveStrs!!)
         return safeCall {
-            api.getLiveStreams(url(), user(), pass(), categoryId = categoryId)
-                .body() ?: emptyList()
+            val r = api.getLiveStreams(url(), user(), pass(), categoryId = categoryId).body() ?: emptyList()
+            if (categoryId == null) { liveStrs = r; liveStrsTs = System.currentTimeMillis() }
+            r
         }
     }
 
     // ── VOD ───────────────────────────────────────────────────
     suspend fun getVodCategories(): Result<List<Category>> {
-        val now = System.currentTimeMillis()
-        cachedVodCategories?.let {
-            if (now - vodCatTs < CACHE_TTL) return Result.success(it)
-        }
+        if (isFresh(vodCats, vodCatsTs)) return Result.success(vodCats!!)
         return safeCall {
-            api.getVodCategories(url(), user(), pass()).body() ?: emptyList()
-        }.also { result ->
-            result.onSuccess { cachedVodCategories = it; vodCatTs = now }
+            val r = api.getVodCategories(url(), user(), pass()).body() ?: emptyList()
+            vodCats = r; vodCatsTs = System.currentTimeMillis(); r
         }
     }
 
     suspend fun getVodStreams(categoryId: String? = null): Result<List<VodStream>> {
-        if (categoryId == null) {
-            val now = System.currentTimeMillis()
-            cachedVodStreams?.let {
-                if (now - vodStreamTs < CACHE_TTL) return Result.success(it)
-            }
-            return safeCall {
-                api.getVodStreams(url(), user(), pass()).body() ?: emptyList()
-            }.also { result ->
-                result.onSuccess { cachedVodStreams = it; vodStreamTs = now }
-            }
-        }
+        if (categoryId == null && isFresh(vodStrs, vodStrsTs)) return Result.success(vodStrs!!)
         return safeCall {
-            api.getVodStreams(url(), user(), pass(), categoryId = categoryId)
-                .body() ?: emptyList()
+            val r = api.getVodStreams(url(), user(), pass(), categoryId = categoryId).body() ?: emptyList()
+            if (categoryId == null) { vodStrs = r; vodStrsTs = System.currentTimeMillis() }
+            r
         }
     }
 
     // ── Series ────────────────────────────────────────────────
     suspend fun getSeriesCategories(): Result<List<Category>> {
-        val now = System.currentTimeMillis()
-        cachedSeriesCategories?.let {
-            if (now - seriesCatTs < CACHE_TTL) return Result.success(it)
-        }
+        if (isFresh(seriesCats, seriesCatsTs)) return Result.success(seriesCats!!)
         return safeCall {
-            api.getSeriesCategories(url(), user(), pass()).body() ?: emptyList()
-        }.also { result ->
-            result.onSuccess { cachedSeriesCategories = it; seriesCatTs = now }
+            val r = api.getSeriesCategories(url(), user(), pass()).body() ?: emptyList()
+            seriesCats = r; seriesCatsTs = System.currentTimeMillis(); r
         }
     }
 
     suspend fun getSeries(categoryId: String? = null): Result<List<SeriesItem>> {
-        if (categoryId == null) {
-            val now = System.currentTimeMillis()
-            cachedSeriesList?.let {
-                if (now - seriesListTs < CACHE_TTL) return Result.success(it)
-            }
-            return safeCall {
-                api.getSeries(url(), user(), pass()).body() ?: emptyList()
-            }.also { result ->
-                result.onSuccess { cachedSeriesList = it; seriesListTs = now }
-            }
-        }
+        if (categoryId == null && isFresh(seriesStrs, seriesStrsTs)) return Result.success(seriesStrs!!)
         return safeCall {
-            api.getSeries(url(), user(), pass(), categoryId = categoryId)
-                .body() ?: emptyList()
+            val r = api.getSeries(url(), user(), pass(), categoryId = categoryId).body() ?: emptyList()
+            if (categoryId == null) { seriesStrs = r; seriesStrsTs = System.currentTimeMillis() }
+            r
         }
     }
 
-    suspend fun getSeriesInfo(seriesId: String): Result<SeriesInfo> {
-        val now = System.currentTimeMillis()
-        seriesInfoCache[seriesId]?.let { (info, ts) ->
-            if (now - ts < CACHE_TTL) return Result.success(info)
-        }
-        return safeCall {
-            api.getSeriesInfo(url(), user(), pass(), seriesId = seriesId)
-                .body() ?: throw Exception("Series not found")
-        }.also { result ->
-            result.onSuccess { seriesInfoCache[seriesId] = Pair(it, now) }
-        }
+    suspend fun getSeriesInfo(seriesId: String): Result<SeriesInfo> = safeCall {
+        api.getSeriesInfo(url(), user(), pass(), seriesId = seriesId).body()
+            ?: throw Exception("Series not found")
     }
 
+    // ── EPG ───────────────────────────────────────────────────
     suspend fun getEpg(streamId: String): Result<EpgResponse> = safeCall {
-        api.getShortEpg(url(), user(), pass(), streamId = streamId)
-            .body() ?: EpgResponse(emptyList())
+        api.getShortEpg(url(), user(), pass(), streamId = streamId).body()
+            ?: EpgResponse(emptyList())
     }
 
     // ── Stream URL builders ───────────────────────────────────
@@ -156,18 +125,6 @@ class ContentRepository @Inject constructor(
     fun buildSeriesUrl(episodeId: String, ext: String): String =
         "${prefs.getServerUrl()}/series/${user()}/${pass()}/$episodeId.$ext"
 
-    // ── Clear all caches (e.g. on logout) ─────────────────────
-    fun clearCache() {
-        cachedLiveCategories   = null
-        cachedLiveStreams       = null
-        cachedVodCategories    = null
-        cachedVodStreams        = null
-        cachedSeriesCategories = null
-        cachedSeriesList       = null
-        seriesInfoCache.clear()
-    }
-
     private suspend fun <T> safeCall(block: suspend () -> T): Result<T> =
-        try { Result.success(block()) }
-        catch (e: Exception) { Result.failure(e) }
+        try { Result.success(block()) } catch (e: Exception) { Result.failure(e) }
 }
