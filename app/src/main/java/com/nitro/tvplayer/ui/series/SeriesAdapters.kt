@@ -30,17 +30,18 @@ class SeriesAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
         with(holder.binding) {
-            // ── Use the NEW IDs from updated item_movie.xml ──
+
+            // ── CORRECT IDs matching updated item_movie.xml ──
             tvName.text = item.name
             ivPoster.loadUrl(item.cover, item.name)
 
             // Rating badge
-            val ratingStr = item.rating5?.let { "%.0f".format(it) }
+            val rating = item.rating5?.let { "%.0f".format(it) }
                 ?: item.rating?.toDoubleOrNull()?.let { "%.0f".format(it) }
-            if (!ratingStr.isNullOrBlank() && ratingStr != "0") {
-                tvRatingBadge.text       = ratingStr
+            if (!rating.isNullOrBlank() && rating != "0") {
+                tvRatingBadge.text       = rating
                 tvRatingBadge.visibility = View.VISIBLE
-                val rv = ratingStr.toIntOrNull() ?: 0
+                val rv = rating.toIntOrNull() ?: 0
                 tvRatingBadge.setBackgroundResource(when {
                     rv >= 7 -> R.drawable.badge_green
                     rv >= 5 -> R.drawable.badge_orange
@@ -50,10 +51,11 @@ class SeriesAdapter(
                 tvRatingBadge.visibility = View.GONE
             }
 
-            // No progress bar for series cards
+            // No watch progress for series cards
             progressWatched.visibility = View.GONE
 
             root.isSelected = position == selectedPos
+
             root.setOnClickListener {
                 val old = selectedPos
                 selectedPos = holder.bindingAdapterPosition
@@ -61,7 +63,11 @@ class SeriesAdapter(
                 notifyItemChanged(selectedPos)
                 onClick(item)
             }
-            root.setOnLongClickListener { onLongPress?.invoke(item); true }
+
+            root.setOnLongClickListener {
+                onLongPress?.invoke(item)
+                true
+            }
         }
     }
 
@@ -87,7 +93,7 @@ class SeasonAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
-        holder.binding.tvSeason.text = "S$item"
+        holder.binding.tvSeason.text   = "S$item"
         holder.binding.root.isSelected = position == selectedPos
         holder.binding.root.setOnClickListener {
             val old = selectedPos
@@ -118,7 +124,7 @@ class EpisodeAdapter(
 
     override fun onBindViewHolder(holder: VH, position: Int) {
         val item = getItem(position)
-        holder.binding.tvEpisodeTitle.text =
+        holder.binding.tvEpisodeTitle.text    =
             "E${item.episodeNum ?: (position + 1)} — ${item.title ?: "Episode ${position + 1}"}"
         holder.binding.tvEpisodeDuration.text = item.info?.duration ?: ""
         holder.binding.root.setOnClickListener { onClick(item) }

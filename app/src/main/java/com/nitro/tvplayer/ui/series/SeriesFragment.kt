@@ -2,20 +2,15 @@ package com.nitro.tvplayer.ui.series
 
 import android.content.Intent
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.nitro.tvplayer.databinding.FragmentSeriesBinding
@@ -34,68 +29,47 @@ class SeriesFragment : Fragment() {
     private val viewModel: SeriesViewModel by activityViewModels()
     @Inject lateinit var favouritesManager: FavouritesManager
 
-    private var _binding: FragmentSeriesBinding? = null
-    private val binding get() = _binding!!
+    private var _b: FragmentSeriesBinding? = null
+    private val b get() = _b!!
 
-    private lateinit var categoryAdapter: CategoryAdapter
-    private lateinit var seriesAdapter: SeriesAdapter
+    private lateinit var catAdapter:     CategoryAdapter
+    private lateinit var seriesAdapter:  SeriesAdapter
+    private lateinit var seasonAdapter:  SeasonAdapter
     private lateinit var episodeAdapter: EpisodeAdapter
-    private lateinit var seasonAdapter: SeasonAdapter
 
-    private var searchVisible = false
+    private var searchOpen = false
 
-    override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        _binding = FragmentSeriesBinding.inflate(inflater, container, false)
-        return binding.root
+    override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View {
+        _b = FragmentSeriesBinding.inflate(i, c, false); return b.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        setupAdapters()
-        observeViewModel()
+        buildAdapters()
+        startObserving()
         setupSearch()
-        // Always trigger load when fragment becomes visible
-        viewModel.loadAll()
+        viewModel.loadAll()   // kick off data load
     }
 
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
-        if (!hidden) {
-            // Re-trigger load when shown again (in case it was hidden before data arrived)
-            viewModel.loadAll()
-        }
-        if (hidden) collapseSearch()
+        if (!hidden) viewModel.loadAll()   // re-trigger if needed
     }
 
-    private fun setupAdapters() {
-        // ── Category sidebar ──────────────────────────────────
-        categoryAdapter = CategoryAdapter { category ->
-            viewModel.filterByCategory(category)
-        }
-        binding.rvCategories.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = categoryAdapter
-        }
+    // ── Adapters ──────────────────────────────────────────────
+    private fun buildAdapters() {
+        catAdapter = CategoryAdapter { cat -> viewModel.filterByCategory(cat) }
+        b.rvCategories.layoutManager = LinearLayoutManager(requireContext())
+        b.rvCategories.adapter       = catAdapter
 
-        // ── Series grid ───────────────────────────────────────
         seriesAdapter = SeriesAdapter(
-            onClick = { series ->
-                viewModel.selectSeries(series)
-            },
+            onClick = { series -> viewModel.selectSeries(series) },
             onLongPress = { series ->
-                val added = favouritesManager.toggle(
-                    FavouriteItem(
-                        id         = "series_${series.seriesId}",
-                        name       = series.name,
-                        icon       = series.cover,
-                        type       = "series",
-                        streamUrl  = "",
-                        categoryId = series.categoryId
-                    )
-                )
+                val added = favouritesManager.toggle(FavouriteItem(
+                    id = "series_${series.seriesId}", name = series.name,
+                    icon = series.cover, type = "series",
+                    streamUrl = "", categoryId = series.categoryId
+                ))
                 Toast.makeText(
                     requireContext(),
                     if (added) "⭐ Added to Favourites" else "Removed from Favourites",
@@ -103,170 +77,137 @@ class SeriesFragment : Fragment() {
                 ).show()
             }
         )
-        binding.rvSeries.apply {
-            layoutManager = GridLayoutManager(requireContext(), 3)
-            adapter = seriesAdapter
-        }
+        b.rvSeries.layoutManager = GridLayoutManager(requireContext(), 3)
+        b.rvSeries.adapter       = seriesAdapter
 
-        // ── Season chips ──────────────────────────────────────
         seasonAdapter = SeasonAdapter { season -> viewModel.selectSeason(season) }
-        binding.rvSeasons.apply {
-            layoutManager = LinearLayoutManager(
-                requireContext(), LinearLayoutManager.HORIZONTAL, false
-            )
-            adapter = seasonAdapter
-        }
+        b.rvSeasons.layoutManager =
+            LinearLayoutManager(requireContext(), LinearLayoutManager.HORIZONTAL, false)
+        b.rvSeasons.adapter = seasonAdapter
 
-        // ── Episodes list ─────────────────────────────────────
-        episodeAdapter = EpisodeAdapter { episode ->
+        episodeAdapter = EpisodeAdapter { ep ->
             val eps    = viewModel.episodes.value
-            val index  = eps.indexOfFirst { it.id == episode.id }
+            val idx    = eps.indexOfFirst { it.id == ep.id }
             val sId    = viewModel.selectedSeries.value?.seriesId ?: 0
             val sName  = viewModel.selectedSeries.value?.name ?: ""
             val season = viewModel.selectedSeason.value
             val cover  = viewModel.selectedSeries.value?.cover ?: ""
 
-            val urls   = ArrayList(eps.map { viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv") })
-            val titles = ArrayList(eps.map { "$sName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}" })
-            val ids    = ArrayList(eps.map { "series_${sId}_ep_${it.id}" })
-            val icons  = ArrayList(eps.map { cover })
-
             startActivity(Intent(requireContext(), PlayerActivity::class.java).apply {
-                putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST, urls)
-                putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,   titles)
-                putStringArrayListExtra(PlayerActivity.EXTRA_IDS,      ids)
-                putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,    icons)
-                putExtra(PlayerActivity.EXTRA_START_INDEX, index.coerceAtLeast(0))
+                putStringArrayListExtra(PlayerActivity.EXTRA_PLAYLIST,
+                    ArrayList(eps.map { viewModel.buildEpisodeUrl(it.id, it.extension ?: "mkv") }))
+                putStringArrayListExtra(PlayerActivity.EXTRA_TITLES,
+                    ArrayList(eps.map { "$sName S${season}E${it.episodeNum ?: ""} - ${it.title ?: ""}" }))
+                putStringArrayListExtra(PlayerActivity.EXTRA_IDS,
+                    ArrayList(eps.map { "series_${sId}_ep_${it.id}" }))
+                putStringArrayListExtra(PlayerActivity.EXTRA_ICONS,
+                    ArrayList(eps.map { cover }))
+                putExtra(PlayerActivity.EXTRA_START_INDEX, idx.coerceAtLeast(0))
                 putExtra(PlayerActivity.EXTRA_TYPE, "series")
             })
         }
-        binding.rvEpisodes.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = episodeAdapter
-        }
+        b.rvEpisodes.layoutManager = LinearLayoutManager(requireContext())
+        b.rvEpisodes.adapter       = episodeAdapter
     }
 
-    private fun observeViewModel() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-
-                // ── Categories ───────────────────────────────
-                launch {
-                    viewModel.categories.collect { cats ->
-                        _binding ?: return@collect
-                        categoryAdapter.submitList(cats)
-
-                        // Auto-select first real category visually
-                        val firstReal = cats.indexOfFirst { c ->
-                            c.categoryId != SERIES_CAT_ALL &&
-                            c.categoryId != SERIES_CAT_FAVOURITES &&
-                            c.categoryId != SERIES_CAT_CONTINUE &&
-                            c.categoryId != SERIES_CAT_RECENTLY_ADDED
-                        }
-                        if (firstReal >= 0) categoryAdapter.setSelected(firstReal)
-                    }
+    // ── Observers — simple, explicit, no shortcuts ────────────
+    private fun startObserving() {
+        // Categories
+        lifecycleScope.launch {
+            viewModel.categories.collect { cats ->
+                if (_b == null) return@collect
+                catAdapter.submitList(cats)
+                val firstReal = cats.indexOfFirst { c ->
+                    c.categoryId != SERIES_CAT_ALL &&
+                    c.categoryId != SERIES_CAT_FAVOURITES &&
+                    c.categoryId != SERIES_CAT_CONTINUE &&
+                    c.categoryId != SERIES_CAT_RECENTLY_ADDED
                 }
+                if (firstReal >= 0) catAdapter.setSelected(firstReal)
+            }
+        }
 
-                // ── Series list — THE CRITICAL FIX ───────────
-                // Do NOT use _binding?.let { } — that passes binding as `it`
-                // Use explicit null check instead
-                launch {
-                    viewModel.seriesList.collect { list ->
-                        val b = _binding ?: return@collect
-                        // Directly submit — no intermediate variable confusion
-                        seriesAdapter.submitList(list)
-                    }
-                }
+        // Series list — the key one
+        lifecycleScope.launch {
+            viewModel.seriesList.collect { list ->
+                if (_b == null) return@collect
+                seriesAdapter.submitList(list)      // direct — no wrapper
+            }
+        }
 
-                // ── Selected series → detail panel ───────────
-                launch {
-                    viewModel.selectedSeries.collect { series ->
-                        series ?: return@collect
-                        val b = _binding ?: return@collect
-                        b.tvSeriesTitle.text  = series.name
-                        b.tvSeriesInfo.text   = buildString {
-                            if (!series.releaseDate.isNullOrBlank()) append(series.releaseDate)
-                            if (!series.genre.isNullOrBlank()) {
-                                if (isNotEmpty()) append(" • ")
-                                append(series.genre)
-                            }
-                        }
-                        val r = series.rating5 ?: series.rating?.toDoubleOrNull()
-                        b.tvSeriesRating.text = if (r != null && r > 0) "★ ${"%.1f".format(r)}" else ""
-                        b.tvSeriesPlot.text   = series.plot?.takeIf { it.isNotBlank() } ?: "No description available."
-                        b.ivSeriesCover.loadUrl(series.cover, series.name)
-                    }
-                }
+        // Selected series → detail panel
+        lifecycleScope.launch {
+            viewModel.selectedSeries.collect { s ->
+                if (_b == null || s == null) return@collect
+                b.tvSeriesTitle.text  = s.name
+                b.tvSeriesInfo.text   = listOfNotNull(
+                    s.releaseDate?.takeIf { it.isNotBlank() },
+                    s.genre?.takeIf { it.isNotBlank() }
+                ).joinToString(" • ")
+                val r = s.rating5 ?: s.rating?.toDoubleOrNull()
+                b.tvSeriesRating.text = if (r != null && r > 0) "★ ${"%.1f".format(r)}" else ""
+                b.tvSeriesPlot.text   = s.plot?.takeIf { it.isNotBlank() } ?: "No description available."
+                b.ivSeriesCover.loadUrl(s.cover, s.name)
+            }
+        }
 
-                // ── Seasons ───────────────────────────────────
-                launch {
-                    viewModel.seasons.collect { seasons ->
-                        _binding ?: return@collect
-                        seasonAdapter.submitList(seasons)
-                        binding.rvSeasons.visibility =
-                            if (seasons.isEmpty()) View.GONE else View.VISIBLE
-                    }
-                }
+        // Seasons
+        lifecycleScope.launch {
+            viewModel.seasons.collect { seasons ->
+                if (_b == null) return@collect
+                seasonAdapter.submitList(seasons)
+                b.rvSeasons.visibility = if (seasons.isEmpty()) View.GONE else View.VISIBLE
+            }
+        }
 
-                // ── Episodes ──────────────────────────────────
-                launch {
-                    viewModel.episodes.collect { eps ->
-                        _binding ?: return@collect
-                        episodeAdapter.submitList(eps)
-                    }
-                }
+        // Episodes
+        lifecycleScope.launch {
+            viewModel.episodes.collect { eps ->
+                if (_b == null) return@collect
+                episodeAdapter.submitList(eps)
+            }
+        }
 
-                // ── Loading ───────────────────────────────────
-                launch {
-                    viewModel.loading.collect { loading ->
-                        _binding?.progressBar?.visibility =
-                            if (loading) View.VISIBLE else View.GONE
-                    }
-                }
+        // Loading spinner
+        lifecycleScope.launch {
+            viewModel.loading.collect { loading ->
+                if (_b == null) return@collect
+                b.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
             }
         }
     }
 
-    // ── Search ────────────────────────────────────────────────
+    // ── Search icon ───────────────────────────────────────────
     private fun setupSearch() {
-        binding.btnSearch.setOnClickListener {
-            searchVisible = !searchVisible
-            if (searchVisible) {
-                binding.searchBarContainer.visibility = View.VISIBLE
-                binding.etSearch.requestFocus()
+        b.btnSearch.setOnClickListener {
+            searchOpen = !searchOpen
+            if (searchOpen) {
+                b.searchBarContainer.visibility = View.VISIBLE
+                b.etSearch.requestFocus()
                 ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
-                    ?.showSoftInput(binding.etSearch, InputMethodManager.SHOW_IMPLICIT)
-            } else {
-                collapseSearch()
+                    ?.showSoftInput(b.etSearch, InputMethodManager.SHOW_IMPLICIT)
+            } else closeSearch()
+        }
+
+        b.btnClearSearch.setOnClickListener { closeSearch() }
+
+        b.etSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                viewModel.search(s?.toString() ?: "")
             }
-        }
-
-        binding.btnClearSearch.setOnClickListener { collapseSearch() }
-
-        binding.etSearch.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
-                viewModel.search(binding.etSearch.text.toString())
-                ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
-                    ?.hideSoftInputFromWindow(binding.etSearch.windowToken, 0)
-                true
-            } else false
-        }
-
-        binding.etSearch.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) { viewModel.search(s.toString()) }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
         })
     }
 
-    private fun collapseSearch() {
-        searchVisible = false
-        binding.etSearch.setText("")
-        binding.searchBarContainer.visibility = View.GONE
+    private fun closeSearch() {
+        searchOpen = false
+        b.etSearch.setText("")
+        b.searchBarContainer.visibility = View.GONE
         viewModel.search("")
         ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
-            ?.hideSoftInputFromWindow(binding.etSearch.windowToken, 0)
+            ?.hideSoftInputFromWindow(b.etSearch.windowToken, 0)
     }
 
-    override fun onDestroyView() { super.onDestroyView(); _binding = null }
+    override fun onDestroyView() { super.onDestroyView(); _b = null }
 }
