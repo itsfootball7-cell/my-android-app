@@ -3,12 +3,13 @@ package com.nitro.tvplayer.ui.livetv
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.text.Editable
-import android.text.TextWatcher
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -41,13 +42,10 @@ class LiveTvFragment : Fragment() {
 
     private lateinit var categoryAdapter: CategoryAdapter
     private lateinit var streamAdapter: LiveStreamAdapter
+    private var searchVisible = false
 
-    override fun onCreateView(
-        inflater: LayoutInflater, container: ViewGroup?,
-        savedInstanceState: Bundle?
-    ): View {
-        _binding = FragmentLiveTvBinding.inflate(inflater, container, false)
-        return binding.root
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        _binding = FragmentLiveTvBinding.inflate(inflater, container, false); return binding.root
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -56,19 +54,71 @@ class LiveTvFragment : Fragment() {
         initPlayer()
         setupPreviewClick()
         observeViewModel()
-        setupChannelSearch()
-        // Category search — only if the view exists in the layout
-        setupCategorySearchIfPresent()
+        setupSearch()
     }
 
+    // ── Search icon toggle ───────────────────────────────────
+    private fun setupSearch() {
+        // Tap 🔍 icon → show/hide search bar
+        binding.btnSearch.setOnClickListener {
+            searchVisible = !searchVisible
+            if (searchVisible) {
+                binding.searchBarContainer.visible()
+                binding.etSearch.requestFocus()
+                showKeyboard(binding.etSearch)
+            } else {
+                collapseSearch()
+            }
+        }
+
+        // X button → clear and collapse
+        binding.btnClearSearch.setOnClickListener {
+            collapseSearch()
+        }
+
+        // IME "Search" key or text change → filter
+        binding.etSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                viewModel.search(binding.etSearch.text.toString())
+                hideKeyboard()
+                true
+            } else false
+        }
+
+        // Live filter as you type
+        binding.etSearch.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                viewModel.search(s.toString())
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
+    }
+
+    private fun collapseSearch() {
+        searchVisible = false
+        binding.etSearch.setText("")
+        binding.searchBarContainer.gone()
+        viewModel.search("")
+        hideKeyboard()
+    }
+
+    private fun showKeyboard(view: View) {
+        val imm = ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
+        imm?.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun hideKeyboard() {
+        val imm = ContextCompat.getSystemService(requireContext(), InputMethodManager::class.java)
+        imm?.hideSoftInputFromWindow(binding.etSearch.windowToken, 0)
+    }
+
+    // ── Player setup ─────────────────────────────────────────
     private fun initPlayer() {
         if (playerHolder.player == null)
             playerHolder.player = ExoPlayer.Builder(requireContext()).build()
-        if (!playerHolder.isInPip) {
-            binding.previewPlayerView.player = playerHolder.player
-        } else {
-            binding.previewPlayerView.player = null
-        }
+        if (!playerHolder.isInPip) binding.previewPlayerView.player = playerHolder.player
+        else binding.previewPlayerView.player = null
         binding.previewPlayerView.useController = false
         if (playerHolder.isInFullscreen && !playerHolder.isInPip) {
             playerHolder.isInFullscreen = false
@@ -120,15 +170,13 @@ class LiveTvFragment : Fragment() {
 
     private fun showPreviewActive() {
         val b = _binding ?: return
-        b.previewPlayerView.visible(); b.ivChannelLogo.gone()
-        b.tvClickToWatch.visible(); b.tapHint.gone()
+        b.previewPlayerView.visible(); b.tapHint.gone(); b.tvClickToWatch.visible()
     }
 
     private fun setupAdapters() {
         categoryAdapter = CategoryAdapter { viewModel.filterByCategory(it) }
         binding.rvCategories.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = categoryAdapter
+            layoutManager = LinearLayoutManager(requireContext()); adapter = categoryAdapter
         }
         streamAdapter = LiveStreamAdapter(
             onClick = { stream ->
@@ -138,19 +186,16 @@ class LiveTvFragment : Fragment() {
             },
             onLongPress = { stream ->
                 val added = favouritesManager.toggle(FavouriteItem(
-                    id = "live_${stream.streamId}", name = stream.name,
-                    icon = stream.streamIcon, type = "live",
-                    streamUrl = viewModel.buildStreamUrl(stream.streamId),
-                    categoryId = stream.categoryId
-                ))
+                    id = "live_${stream.streamId}", name = stream.name, icon = stream.streamIcon,
+                    type = "live", streamUrl = viewModel.buildStreamUrl(stream.streamId),
+                    categoryId = stream.categoryId))
                 Toast.makeText(requireContext(),
                     if (added) "⭐ Added to Favourites" else "Removed from Favourites",
                     Toast.LENGTH_SHORT).show()
             }
         )
         binding.rvStreams.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = streamAdapter
+            layoutManager = LinearLayoutManager(requireContext()); adapter = streamAdapter
         }
     }
 
@@ -165,12 +210,7 @@ class LiveTvFragment : Fragment() {
                         else if (cats.isNotEmpty()) categoryAdapter.setSelected(0)
                     }
                 }
-                launch {
-                    viewModel.streams.collect { streams ->
-                        _binding ?: return@collect
-                        streamAdapter.submitList(streams)
-                    }
-                }
+                launch { viewModel.streams.collect { s -> _binding?.let { streamAdapter.submitList(s) } } }
                 launch {
                     viewModel.selectedStream.collect { stream ->
                         stream ?: return@collect
@@ -182,53 +222,25 @@ class LiveTvFragment : Fragment() {
                 }
                 launch {
                     viewModel.loading.collect { loading ->
-                        _binding?.progressBar?.visibility =
-                            if (loading) View.VISIBLE else View.GONE
+                        _binding?.progressBar?.visibility = if (loading) View.VISIBLE else View.GONE
                     }
                 }
             }
         }
     }
 
-    // ── Channel content search ─────────────────────────────────
-    private fun setupChannelSearch() {
-        binding.etSearch.addTextChangedListener(object : TextWatcher {
-            override fun afterTextChanged(s: Editable?) { viewModel.search(s.toString()) }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-        })
-    }
-
-    // ── Category sidebar search — only if view ID exists ──────
-    private fun setupCategorySearchIfPresent() {
-        try {
-            // etCategorySearch is optional — only present if added to fragment_live_tv.xml
-            val field = binding.javaClass.getDeclaredField("etCategorySearch")
-            field.isAccessible = true
-            val et = field.get(binding) as? android.widget.EditText ?: return
-            et.addTextChangedListener(object : TextWatcher {
-                override fun afterTextChanged(s: Editable?) { categoryAdapter.filter(s.toString()) }
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            })
-        } catch (e: Exception) {
-            // View doesn't exist in layout — that's fine, skip silently
-        }
-    }
-
     override fun onHiddenChanged(hidden: Boolean) {
         super.onHiddenChanged(hidden)
         if (hidden) {
+            collapseSearch()
             if (!playerHolder.isInPip) { binding.previewPlayerView.player = null; playerHolder.player?.stop() }
             else binding.previewPlayerView.player = null
         } else {
             if (!playerHolder.isInPip && playerHolder.currentUrl != null) {
-                if (playerHolder.player == null)
-                    playerHolder.player = ExoPlayer.Builder(requireContext()).build()
+                if (playerHolder.player == null) playerHolder.player = ExoPlayer.Builder(requireContext()).build()
                 binding.previewPlayerView.player = playerHolder.player
                 playerHolder.player?.apply {
-                    setMediaItem(MediaItem.fromUri(Uri.parse(playerHolder.currentUrl!!)))
-                    prepare(); playWhenReady = true
+                    setMediaItem(MediaItem.fromUri(Uri.parse(playerHolder.currentUrl!!))); prepare(); playWhenReady = true
                 }
                 showPreviewActive()
             }
@@ -251,8 +263,7 @@ class LiveTvFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        super.onDestroyView()
-        binding.previewPlayerView.player = null; _binding = null
+        super.onDestroyView(); binding.previewPlayerView.player = null; _binding = null
     }
 
     override fun onDestroy() {
