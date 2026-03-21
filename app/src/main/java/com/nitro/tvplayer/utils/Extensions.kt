@@ -20,25 +20,26 @@ fun ImageView.loadUrl(url: String?, fallbackText: String = "") {
         if (fallbackText.isNotBlank()) setLetterPlaceholder(fallbackText)
         return
     }
+    val view = this
     Glide.with(context)
         .load(url)
         .diskCacheStrategy(DiskCacheStrategy.ALL)
         .listener(object : RequestListener<Drawable> {
             override fun onLoadFailed(
                 e: GlideException?,
-                model: Any?,
-                target: Target<Drawable>?,    // nullable — matches Glide 4.16
+                model: Any,
+                target: Target<Drawable>,
                 isFirstResource: Boolean
             ): Boolean {
-                if (fallbackText.isNotBlank()) setLetterPlaceholder(fallbackText)
+                if (fallbackText.isNotBlank()) view.setLetterPlaceholder(fallbackText)
                 return true
             }
 
             override fun onResourceReady(
-                resource: Drawable?,          // nullable — matches Glide 4.16
-                model: Any?,
-                target: Target<Drawable>?,    // nullable
-                dataSource: DataSource?,      // nullable
+                resource: Drawable,
+                model: Any,
+                target: Target<Drawable>,
+                dataSource: DataSource,
                 isFirstResource: Boolean
             ): Boolean = false
         })
