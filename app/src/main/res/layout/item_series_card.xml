@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="120dp"
+    android:layout_margin="3dp"
+    android:background="@drawable/stream_item_selector">
+
+    <!-- Poster -->
+    <ImageView
+        android:id="@+id/ivSeriesPoster"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:background="@drawable/poster_placeholder"/>
+
+    <!-- Bottom gradient -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_gravity="bottom"
+        android:background="@drawable/gradient_bottom"/>
+
+    <!-- Title -->
+    <TextView
+        android:id="@+id/tvSeriesName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:textColor="#FFFFFF"
+        android:textSize="9sp"
+        android:padding="4dp"
+        android:paddingBottom="8dp"
+        android:maxLines="2"
+        android:ellipsize="end"/>
+
+    <!-- Rating badge top-left -->
+    <TextView
+        android:id="@+id/tvSeriesRatingBadge"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="top|start"
+        android:layout_margin="4dp"
+        android:textColor="#FFFFFF"
+        android:textSize="8sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:background="@drawable/badge_green"
+        android:visibility="gone"/>
+
+</FrameLayout>
