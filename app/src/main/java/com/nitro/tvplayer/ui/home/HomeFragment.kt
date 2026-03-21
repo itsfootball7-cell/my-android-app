@@ -24,16 +24,15 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class HomeFragment : Fragment() {
 
-    private val liveTvViewModel: LiveTvViewModel  by activityViewModels()
-    private val moviesViewModel: MoviesViewModel   by activityViewModels()
-    private val seriesViewModel: SeriesViewModel   by activityViewModels()
+    private val liveVm:   LiveTvViewModel  by activityViewModels()
+    private val moviesVm: MoviesViewModel  by activityViewModels()
+    private val seriesVm: SeriesViewModel  by activityViewModels()
 
     @Inject lateinit var prefs: PrefsManager
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
 
-    // Callback wired by HomeActivity
     var onNavigate: ((String) -> Unit)? = null
 
     override fun onCreateView(
@@ -46,88 +45,73 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        setupUserInfo()
+        setupInfo()
         setupClicks()
-        observeViewModels()
-        // Preload all 3 sections in background
-        liveTvViewModel.loadAll()
-        moviesViewModel.loadAll()
-        seriesViewModel.loadAll()
+        observeAll()
+        liveVm.loadAll()
+        moviesVm.loadAll()
+        seriesVm.loadAll()
     }
 
-    private fun setupUserInfo() {
-        val userInfo = prefs.getUserInfo()
-        binding.tvLoggedIn.text = "Logged in:  ${userInfo?.username ?: "—"}"
-        binding.tvExpiry.text   = "Expiration : ${formatExpiry(userInfo?.expDate)}"
-        binding.tvDateTime.text = SimpleDateFormat(
-            "hh:mm a    MMM dd, yyyy", Locale.getDefault()
-        ).format(Date())
+    private fun setupInfo() {
+        val u = prefs.getUserInfo()
+        binding.tvLoggedIn.text = "Logged in:  ${u?.username ?: "—"}"
+        binding.tvExpiry.text   = "Expiration : ${formatExpiry(u?.expDate)}"
+        binding.tvDateTime.text = SimpleDateFormat("hh:mm a    MMM dd, yyyy", Locale.getDefault()).format(Date())
     }
 
-    private fun formatExpiry(expDate: String?): String {
-        if (expDate.isNullOrBlank()) return "—"
+    private fun formatExpiry(exp: String?): String {
+        if (exp.isNullOrBlank()) return "—"
         return try {
-            val ts   = expDate.toLongOrNull()
-            val date = if (ts != null) Date(ts * 1000) else Date()
-            SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()).format(date)
-        } catch (e: Exception) { expDate }
+            val ts = exp.toLongOrNull()
+            val d  = if (ts != null) Date(ts * 1000) else Date()
+            SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault()).format(d)
+        } catch (e: Exception) { exp }
     }
 
     private fun setupClicks() {
-        // ── Navigate to sections ──
-        binding.cardLiveTv.setOnClickListener  { onNavigate?.invoke("live") }
-        binding.cardMovies.setOnClickListener  { onNavigate?.invoke("movies") }
-        binding.cardSeries.setOnClickListener  { onNavigate?.invoke("series") }
-        binding.btnMasterSearch.setOnClickListener { onNavigate?.invoke("search") }
-        binding.cardSearch.setOnClickListener      { onNavigate?.invoke("search") }
-        binding.cardSettings.setOnClickListener    { onNavigate?.invoke("settings") }
-        binding.cardSubscription.setOnClickListener { onNavigate?.invoke("settings") }
+        binding.cardLiveTv.setOnClickListener       { onNavigate?.invoke("live") }
+        binding.cardMovies.setOnClickListener        { onNavigate?.invoke("movies") }
+        binding.cardSeries.setOnClickListener        { onNavigate?.invoke("series") }
+        binding.btnMasterSearch.setOnClickListener   { onNavigate?.invoke("search") }
+        binding.cardSearch.setOnClickListener        { onNavigate?.invoke("search") }
+        binding.cardSettings.setOnClickListener      { onNavigate?.invoke("settings") }
+        binding.cardSubscription.setOnClickListener  { onNavigate?.invoke("settings") }
 
-        // ── Refresh buttons ──
         binding.btnRefreshLive.setOnClickListener {
-            liveTvViewModel.forceRefresh()
+            liveVm.forceRefresh()
             binding.circularLive.isSpinning = true
-            binding.btnRefreshLive.animate()
-                .rotation(binding.btnRefreshLive.rotation + 360f)
-                .setDuration(600).start()
+            binding.btnRefreshLive.animate().rotation(binding.btnRefreshLive.rotation + 360f).setDuration(600).start()
         }
         binding.btnRefreshMovies.setOnClickListener {
-            moviesViewModel.forceRefresh()
+            moviesVm.forceRefresh()
             binding.circularMovies.isSpinning = true
-            binding.btnRefreshMovies.animate()
-                .rotation(binding.btnRefreshMovies.rotation + 360f)
-                .setDuration(600).start()
+            binding.btnRefreshMovies.animate().rotation(binding.btnRefreshMovies.rotation + 360f).setDuration(600).start()
         }
         binding.btnRefreshSeries.setOnClickListener {
-            seriesViewModel.forceRefresh()
+            seriesVm.forceRefresh()
             binding.circularSeries.isSpinning = true
-            binding.btnRefreshSeries.animate()
-                .rotation(binding.btnRefreshSeries.rotation + 360f)
-                .setDuration(600).start()
+            binding.btnRefreshSeries.animate().rotation(binding.btnRefreshSeries.rotation + 360f).setDuration(600).start()
         }
     }
 
-    private fun observeViewModels() {
+    private fun observeAll() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
 
-                // ── Live TV ──────────────────────────────────────────
+                // ─── Live TV ────────────────────────────────────────
                 launch {
-                    liveTvViewModel.loading.collect { loading ->
+                    liveVm.loading.collect { v: Boolean ->
                         _binding ?: return@collect
-                        if (loading) {
-                            binding.circularLive.isSpinning = true
-                            binding.circularLive.progress   = 0f
-                        } else {
-                            binding.circularLive.isSpinning = false
-                        }
+                        if (v) { binding.circularLive.isSpinning = true; binding.circularLive.progress = 0f }
+                        else binding.circularLive.isSpinning = false
                     }
                 }
                 launch {
-                    liveTvViewModel.allStreamsCount.collect { count: Int ->
+                    liveVm.allStreamsCount.collect { v: Int ->
                         _binding ?: return@collect
-                        if (count > 0) {
-                            binding.tvLiveTvCount.text       = "$count Channels"
+                        if (v > 0) {
+                            binding.tvLiveTvCount.text       = "$v Channels"
                             binding.tvLiveTvCount.visibility = View.VISIBLE
                             binding.circularLive.isSpinning  = false
                             binding.circularLive.progress    = 1f
@@ -135,86 +119,75 @@ class HomeFragment : Fragment() {
                     }
                 }
                 launch {
-                    liveTvViewModel.lastUpdated.collect { ts: Long ->
+                    liveVm.lastUpdated.collect { v: Long ->
                         _binding ?: return@collect
-                        binding.tvLiveTvUpdated.text = formatLastUpdated(ts)
+                        binding.tvLiveTvUpdated.text = timeAgo(v)
                     }
                 }
 
-                // ── Movies ───────────────────────────────────────────
+                // ─── Movies ─────────────────────────────────────────
                 launch {
-                    moviesViewModel.loading.collect { loading ->
+                    moviesVm.loading.collect { v: Boolean ->
                         _binding ?: return@collect
-                        if (loading) {
-                            binding.circularMovies.isSpinning = true
-                            binding.circularMovies.progress   = 0f
-                        } else {
+                        if (v) { binding.circularMovies.isSpinning = true; binding.circularMovies.progress = 0f }
+                        else binding.circularMovies.isSpinning = false
+                    }
+                }
+                launch {
+                    moviesVm.allMoviesCount.collect { v: Int ->
+                        _binding ?: return@collect
+                        if (v > 0) {
+                            binding.tvMoviesCount.text        = "$v Movies"
+                            binding.tvMoviesCount.visibility  = View.VISIBLE
                             binding.circularMovies.isSpinning = false
+                            binding.circularMovies.progress   = 1f
                         }
                     }
                 }
                 launch {
-                    moviesViewModel.allMoviesCount.collect { count: Int ->
+                    moviesVm.lastUpdated.collect { v: Long ->
                         _binding ?: return@collect
-                        if (count > 0) {
-                            binding.tvMoviesCount.text         = "$count Movies"
-                            binding.tvMoviesCount.visibility   = View.VISIBLE
-                            binding.circularMovies.isSpinning  = false
-                            binding.circularMovies.progress    = 1f
-                        }
-                    }
-                }
-                launch {
-                    moviesViewModel.lastUpdated.collect { ts: Long ->
-                        _binding ?: return@collect
-                        binding.tvMoviesUpdated.text = formatLastUpdated(ts)
+                        binding.tvMoviesUpdated.text = timeAgo(v)
                     }
                 }
 
-                // ── Series ───────────────────────────────────────────
+                // ─── Series ─────────────────────────────────────────
                 launch {
-                    seriesViewModel.loading.collect { loading ->
+                    seriesVm.loading.collect { v: Boolean ->
                         _binding ?: return@collect
-                        if (loading) {
-                            binding.circularSeries.isSpinning = true
-                            binding.circularSeries.progress   = 0f
-                        } else {
+                        if (v) { binding.circularSeries.isSpinning = true; binding.circularSeries.progress = 0f }
+                        else binding.circularSeries.isSpinning = false
+                    }
+                }
+                launch {
+                    seriesVm.allSeriesCount.collect { v: Int ->
+                        _binding ?: return@collect
+                        if (v > 0) {
+                            binding.tvSeriesCount.text        = "$v Series"
+                            binding.tvSeriesCount.visibility  = View.VISIBLE
                             binding.circularSeries.isSpinning = false
+                            binding.circularSeries.progress   = 1f
                         }
                     }
                 }
                 launch {
-                    seriesViewModel.allSeriesCount.collect { count: Int ->
+                    seriesVm.lastUpdated.collect { v: Long ->
                         _binding ?: return@collect
-                        if (count > 0) {
-                            binding.tvSeriesCount.text         = "$count Series"
-                            binding.tvSeriesCount.visibility   = View.VISIBLE
-                            binding.circularSeries.isSpinning  = false
-                            binding.circularSeries.progress    = 1f
-                        }
-                    }
-                }
-                launch {
-                    seriesViewModel.lastUpdated.collect { ts: Long ->
-                        _binding ?: return@collect
-                        binding.tvSeriesUpdated.text = formatLastUpdated(ts)
+                        binding.tvSeriesUpdated.text = timeAgo(v)
                     }
                 }
             }
         }
     }
 
-    private fun formatLastUpdated(timestamp: Long): String {
-        if (timestamp == 0L) return "Last updated: —"
-        val diff    = System.currentTimeMillis() - timestamp
-        val minutes = diff / 60_000
-        val hours   = diff / 3_600_000
-        val days    = diff / 86_400_000
+    private fun timeAgo(ts: Long): String {
+        if (ts == 0L) return "Last updated: —"
+        val d = System.currentTimeMillis() - ts
         return "Last updated: " + when {
-            minutes < 1  -> "just now"
-            minutes < 60 -> "$minutes min ago"
-            hours   < 24 -> "$hours hours ago"
-            else         -> "$days day${if (days > 1) "s" else ""} ago"
+            d < 60_000       -> "just now"
+            d < 3_600_000    -> "${d / 60_000} min ago"
+            d < 86_400_000   -> "${d / 3_600_000} hours ago"
+            else             -> "${d / 86_400_000} days ago"
         }
     }
 
