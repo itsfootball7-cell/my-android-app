@@ -14,8 +14,8 @@ import com.nitro.tvplayer.utils.loadUrl
 
 class MoviesAdapter(
     private val positionManager: PlaybackPositionManager,
-    private val onClick:         (VodStream) -> Unit,
-    private val onLongPress:     ((VodStream) -> Unit)? = null
+    private val onClick:     (VodStream) -> Unit,   // single tap → play
+    private val onLongPress: (VodStream) -> Unit    // long press → options
 ) : ListAdapter<VodStream, MoviesAdapter.VH>(DIFF) {
 
     inner class VH(val binding: ItemMovieBinding) : RecyclerView.ViewHolder(binding.root)
@@ -26,16 +26,16 @@ class MoviesAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val movie = getItem(position)
         with(holder.binding) {
-            ivPoster.loadUrl(movie.streamIcon)
+            ivPoster.loadUrl(movie.streamIcon, movie.name)
             tvName.text = movie.name
 
             // ── Rating badge ──────────────────────────────────
-            val ratingStr = movie.rating5?.let { "%.0f".format(it) }
+            val rating = movie.rating5?.let { "%.0f".format(it) }
                 ?: movie.rating?.toDoubleOrNull()?.let { "%.0f".format(it) }
-            if (!ratingStr.isNullOrBlank() && ratingStr != "0") {
-                tvRatingBadge.text       = ratingStr
+            if (!rating.isNullOrBlank() && rating != "0") {
+                tvRatingBadge.text       = rating
                 tvRatingBadge.visibility = View.VISIBLE
-                val rv = ratingStr.toIntOrNull() ?: 0
+                val rv = rating.toIntOrNull() ?: 0
                 tvRatingBadge.setBackgroundResource(when {
                     rv >= 7 -> R.drawable.badge_green
                     rv >= 5 -> R.drawable.badge_orange
@@ -46,8 +46,7 @@ class MoviesAdapter(
             }
 
             // ── Continue watching progress bar ─────────────────
-            val contentId = "movie_${movie.streamId}"
-            val pct       = positionManager.getProgressPercent(contentId)
+            val pct = positionManager.getProgressPercent("movie_${movie.streamId}")
             if (pct > 0) {
                 progressWatched.visibility = View.VISIBLE
                 progressWatched.progress   = pct
@@ -55,8 +54,14 @@ class MoviesAdapter(
                 progressWatched.visibility = View.GONE
             }
 
-            root.setOnClickListener     { onClick(movie) }
-            root.setOnLongClickListener { onLongPress?.invoke(movie); true }
+            // ── Single tap → PLAY directly ─────────────────────
+            root.setOnClickListener { onClick(movie) }
+
+            // ── Long press → OPTIONS (favourite/detail) ────────
+            root.setOnLongClickListener {
+                onLongPress(movie)
+                true
+            }
         }
     }
 
